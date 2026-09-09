@@ -1,0 +1,15 @@
+# ATALAYA // Publicación hacia plataformas de correlación — OPCIONAL
+#
+# Sólo hace falta si vas a usar `misp_stix_connector.py --push`, que empuja
+# el bundle a OpenCTI. El import es opcional y guardado: sin esto instalado,
+# el conector te dice qué falta en vez de reventar.
+#
+# Va aparte porque estas librerías arrastran cadenas de dependencias muy
+# largas y fijan versiones viejas de pydantic, bloqueando actualizaciones de
+# seguridad del resto del proyecto.
+#
+#     pip install -r requirements.txt -r requirements-publish.txt
+pycti==6.4.6
+pymisp==2.5.3
+stix2==3.0.1
+stix2-validator==3.2.0

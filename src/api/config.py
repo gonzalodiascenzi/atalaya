@@ -77,6 +77,49 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         return self.atalaya_env.lower() in {"prod", "production"}
 
+    #: Longitud mínima de la clave de firma. Con HS256, la fuerza del token
+    #: es exactamente la fuerza de esta cadena: una clave corta se rompe por
+    #: fuerza bruta fuera de línea y a partir de ahí se firman sesiones de
+    #: administrador sin tocar el servidor.
+    MIN_SECRET_KEY_LENGTH: int = 32
+
+    def assert_production_ready(self) -> None:
+        """Verifica que no se arranque en producción con valores de juguete.
+
+        Se ABORTA en vez de sólo advertir. Un aviso en el log es un aviso que
+        nadie lee, y el costo de equivocarse acá es que cualquiera que lea el
+        repositorio pueda firmarse un token de ADMIN.
+        """
+        if not self.is_production:
+            return
+
+        problemas: list[str] = []
+        if self.api_secret_key.startswith("insecure-dev"):
+            problemas.append(
+                "API_SECRET_KEY sigue en el valor por defecto del repositorio: "
+                "cualquiera puede firmar tokens válidos"
+            )
+        elif len(self.api_secret_key) < self.MIN_SECRET_KEY_LENGTH:
+            problemas.append(
+                f"API_SECRET_KEY tiene {len(self.api_secret_key)} caracteres; "
+                f"hacen falta al menos {self.MIN_SECRET_KEY_LENGTH}"
+            )
+        if "*" in self.api_cors_origins:
+            problemas.append(
+                "API_CORS_ORIGINS contiene '*' y la API envía cookies de sesión: "
+                "cualquier sitio podría operar en nombre del analista"
+            )
+        if not self.database_url.strip():
+            problemas.append("DATABASE_URL no está configurada")
+
+        if problemas:
+            detalle = "\n  · ".join(problemas)
+            raise RuntimeError(
+                "ATALAYA no arranca en producción con esta configuración:\n  · "
+                f"{detalle}\n\n"
+                "Generá los secretos con:  openssl rand -hex 32"
+            )
+
     @property
     def async_database_url(self) -> str:
         """Normaliza el DSN al driver asíncrono.

@@ -1,18 +1,23 @@
 # ATALAYA // API — dependencias de runtime
 # Versiones fijadas: un build reproducible es un build auditable.
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-pydantic==2.10.5
+#
+# Se verifica con `pip-audit` en cada push (job `dependencias` del pipeline).
+# pyjwt y starlette se mantienen al día sin excusas: el primero valida los
+# tokens de sesión y el segundo es el suelo sobre el que corre todo.
+fastapi==0.141.1
+starlette==1.6.0
+uvicorn[standard]==0.52.4
+pydantic==2.13.5
 pydantic-settings==2.7.1
-python-dotenv==1.0.1
+python-dotenv==1.2.3
 httpx==0.28.1
-orjson==3.10.14
+orjson==3.12.0
 
 # Autenticación
-pyjwt==2.10.1
-argon2-cffi==23.1.0
+pyjwt==2.13.0
+argon2-cffi==25.1.0
 
 # Persistencia
-sqlalchemy[asyncio]==2.0.36
-asyncpg==0.30.0
-alembic==1.14.0
+sqlalchemy[asyncio]==2.0.52
+asyncpg==0.31.0
+alembic==1.19.2

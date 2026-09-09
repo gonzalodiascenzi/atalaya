@@ -1,9 +1,12 @@
 # ATALAYA // herramientas de desarrollo y CI
 -r requirements.txt
-pytest==8.3.4
-pytest-asyncio==0.25.2
+pytest==9.0.3
+# Sin pytest-asyncio: la suite no tiene un solo `async def test_`. Todo el
+# testing asíncrono pasa por helpers con asyncio.run() y una conexión propia,
+# que además prueba que el dato está en la base y no sólo en la sesión de la
+# app. Una dependencia menos que mantener parcheada.
 flake8==7.1.1
-black==24.10.0
+black==26.3.1
 bandit==1.8.2
 
 # Postgres real y efímero para los tests: nada de SQLite. Si el motor de

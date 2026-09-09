@@ -126,8 +126,7 @@ class AnalystRepository:
         no positivos quedaron por encima de cada fila; las filas con cero
         cortes son, exactamente, la racha vigente.
         """
-        stmt = text(
-            """
+        stmt = text("""
             SELECT COUNT(*) AS racha FROM (
                 SELECT SUM(CASE WHEN xp_delta_applied <= 0 THEN 1 ELSE 0 END)
                        OVER (ORDER BY id DESC ROWS UNBOUNDED PRECEDING) AS cortes
@@ -135,8 +134,7 @@ class AnalystRepository:
                 WHERE analyst_id = :analyst_id
             ) t
             WHERE cortes = 0
-            """
-        )
+            """)
         result = await self._session.execute(stmt, {"analyst_id": analyst_id})
         return int(result.scalar_one() or 0)
 

@@ -1,20 +1,17 @@
-# ATALAYA // Ingesta — dependencias
+# ATALAYA // Ingesta — dependencias de runtime
 #
 # El conector de referencia (misp_stix_connector.py) corre con la librería
 # estándar únicamente, a propósito: es el contrato canónico del formato y
 # tiene que poder ejecutarse en un contenedor pelado.
 #
-# Los conectores que hablan con APIs reales sí necesitan lo de abajo.
+# Lo de abajo es lo que necesitan los conectores que hablan con APIs reales,
+# y nada más. Cada dependencia que se declara es una que hay que auditar y
+# parchear para siempre: pymisp, stix2 y stix2-validator estaban acá sin que
+# una sola línea de código las importara.
 httpx==0.28.1
-tenacity==9.0.0
-python-dotenv==1.0.1
+tenacity==9.1.4
+python-dotenv==1.2.3
 
 # Persistencia compartida con la API (misiones y avistamientos).
-sqlalchemy[asyncio]==2.0.36
-asyncpg==0.30.0
-
-# Publicación opcional hacia las plataformas de correlación.
-pymisp==2.5.3
-pycti==6.4.6
-stix2==3.0.1
-stix2-validator==3.2.0
+sqlalchemy[asyncio]==2.0.52
+asyncpg==0.31.0

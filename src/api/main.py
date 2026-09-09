@@ -167,12 +167,10 @@ async def lifespan(app: FastAPI):
         log.error("PostgreSQL INALCANZABLE: %s", exc)
         log.error("La progresión no se va a poder registrar. Revisá DATABASE_URL.")
 
-    if settings.is_production and settings.api_secret_key.startswith("insecure-dev"):
-        # No abortamos el arranque, pero que quede en el log y en el health.
-        log.error(
-            "API_SECRET_KEY sigue en el valor por defecto en un entorno de "
-            "producción. Rotala YA."
-        )
+    # En producción esto ABORTA el arranque. Arrancar degradado con una clave
+    # de firma pública es peor que no arrancar: el servicio parece sano
+    # mientras cualquiera se firma un token de administrador.
+    settings.assert_production_ready()
     yield
 
     await dispose_engine()
@@ -343,7 +341,9 @@ app.add_middleware(
     allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Callsign"],
+    # X-Callsign ya no existe: la identidad sale del token. Dejarla habilitada
+    # era superficie muerta apuntando al modelo viejo.
+    allow_headers=["Authorization", "Content-Type"],
     max_age=600,
 )
 
@@ -711,7 +711,7 @@ async def level_up(
         event = XPEvent(payload.event)
     except ValueError:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
                 f"Evento '{payload.event}' desconocido. "
                 f"Válidos: {', '.join(e.value for e in XPEvent)}"
@@ -873,7 +873,7 @@ async def submit_verdict(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         )
     return VerdictResponse(**resultado)
 

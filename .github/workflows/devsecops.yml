@@ -5,6 +5,7 @@
 #
 #    1. secretos      · TruffleHog + Gitleaks (dos motores, criterios distintos)
 #    2. python-lint   · flake8 + black + bandit
+#    2b. dependencias · pip-audit sobre las dependencias Python
 #    3. python-test   · pytest contra PostgreSQL real
 #    3b. migraciones  · aplica, revierte y verifica que el esquema coincida
 #    4b. ingesta      · conectores OSINT con fixtures, sin tocar la red
@@ -134,6 +135,26 @@ jobs:
           path: bandit-report.json
           if-no-files-found: ignore
           retention-days: 14
+
+  # ════════════════════════════════════════════════════════════════════
+  dependencias:
+    name: 📦 CVEs en dependencias Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # `npm audit` cubría el frontend desde el día uno, pero el lado Python
+      # no tenía equivalente. La primera corrida encontró 28 vulnerabilidades,
+      # doce de ellas en la librería que valida los tokens de sesión.
+      - name: pip-audit
+        run: |
+          python -m pip install --upgrade pip pip-audit
+          pip install -r src/api/requirements.txt -r src/ingestion/requirements.txt
+          pip-audit --progress-spinner off --strict
 
   # ════════════════════════════════════════════════════════════════════
   python-test:
@@ -411,6 +432,7 @@ jobs:
     needs:
       - secretos
       - python-lint
+      - dependencias
       - python-test
       - migraciones
       - stix-contract
@@ -427,6 +449,7 @@ jobs:
           echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
           echo "| Secretos | ${{ needs.secretos.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Lint Python | ${{ needs.python-lint.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| CVEs dependencias | ${{ needs.dependencias.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Tests API | ${{ needs.python-test.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Migraciones | ${{ needs.migraciones.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Contrato STIX | ${{ needs.stix-contract.result }} |" >> "$GITHUB_STEP_SUMMARY"
