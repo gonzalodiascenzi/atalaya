@@ -1,0 +1,107 @@
+/* ATALAYA // capa base de estilos */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Orbitron:wght@500;700;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html {
+    scrollbar-color: #39ff88 #080b11;
+  }
+
+  body {
+    @apply bg-void text-phosphor font-mono antialiased;
+    background-image:
+      theme('backgroundImage.radial-fade'),
+      theme('backgroundImage.grid');
+    background-size: auto, theme('backgroundSize.grid');
+    background-attachment: fixed;
+  }
+
+  /* Selección con el verde de la casa. */
+  ::selection {
+    @apply bg-neon-green/25 text-neon-green;
+  }
+
+  /* Scrollbar de consola, no de navegador. */
+  ::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-void-900;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-none border border-neon-green/30 bg-neon-green/25;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-neon-green/50;
+  }
+
+  /* Respeto por quien pidió menos movimiento. La inmersión no vale un mareo. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* Panel base: vidrio oscuro con borde tenue. */
+  .panel {
+    @apply relative border border-void-600/80 bg-void-900/70 shadow-panel backdrop-blur-sm;
+  }
+
+  /* Cabecera tipo barra de ventana de terminal. */
+  .panel-header {
+    @apply flex items-center gap-2 border-b border-void-600/80 bg-void-800/60 px-3 py-2
+           text-2xs uppercase tracking-[0.18em] text-phosphor-dim;
+  }
+
+  /* Etiqueta pequeña de metadato. */
+  .chip {
+    @apply inline-flex items-center gap-1 border px-2 py-0.5 text-2xs uppercase
+           tracking-[0.14em];
+  }
+
+  /* Texto con brillo de fósforo. */
+  .glow-text {
+    text-shadow: 0 0 6px currentColor, 0 0 18px rgba(57, 255, 136, 0.25);
+  }
+
+  /* Superposición CRT: se aplica al contenedor raíz. */
+  .crt::before {
+    content: '';
+    @apply pointer-events-none fixed inset-0 z-50 bg-scanlines opacity-[0.16];
+  }
+  .crt::after {
+    content: '';
+    @apply pointer-events-none fixed inset-x-0 top-0 z-50 h-24 animate-scanline
+           bg-gradient-to-b from-transparent via-neon-green/[0.055] to-transparent;
+  }
+
+  /* Botón de acción de la consola. */
+  .btn-console {
+    @apply border px-3 py-1.5 text-2xs uppercase tracking-[0.16em] transition-all
+           duration-200 ease-snap disabled:cursor-not-allowed disabled:opacity-35;
+  }
+}
+
+@layer utilities {
+  .text-shadow-none {
+    text-shadow: none;
+  }
+  /* Cortes diagonales: la esquina biselada es la firma visual del panel. */
+  .clip-corner {
+    clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+  }
+}

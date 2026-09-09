@@ -1,0 +1,370 @@
+# ══════════════════════════════════════════════════════════════════════════
+#  ATALAYA // Orquestación local
+#  ---------------------------------------------------------------------
+#  Perfiles (para no fundir la notebook levantando todo de una):
+#
+#    (por defecto)      api + frontend + postgres          ~1 GB RAM
+#    --profile cti      + OpenCTI, MISP y dependencias     ~8 GB RAM
+#    --profile hunt     + SpiderFoot                       ~0.5 GB RAM
+#
+#  Uso:
+#    docker compose --env-file ../../.env up -d
+#    docker compose --env-file ../../.env --profile cti up -d
+#
+#  PRE-REQUISITO para OpenCTI (ElasticSearch necesita mmap):
+#    sudo sysctl -w vm.max_map_count=1048575
+#
+#  Nota: la clave `version:` fue declarada obsoleta por Compose V2 y se omite
+#  a propósito; incluirla sólo genera una advertencia.
+# ══════════════════════════════════════════════════════════════════════════
+
+name: atalaya
+
+x-restart: &restart
+  restart: unless-stopped
+
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+networks:
+  atalaya:
+    name: atalaya_net
+    driver: bridge
+
+volumes:
+  pgdata:
+  esdata:
+  s3data:
+  amqpdata:
+  redisdata:
+  mispdata:
+  mispdb:
+  spiderfootdata:
+
+services:
+  # ════════════════════════════════════════════════════════════════════
+  #  NÚCLEO — siempre arriba
+  # ════════════════════════════════════════════════════════════════════
+
+  api:
+    <<: [*restart, *logging]
+    build:
+      context: ../../src/api
+      dockerfile: Dockerfile
+    image: atalaya/api:0.1.0
+    container_name: atalaya-api
+    environment:
+      ATALAYA_ENV: ${ATALAYA_ENV:-local}
+      API_LOG_LEVEL: ${API_LOG_LEVEL:-info}
+      API_SECRET_KEY: ${API_SECRET_KEY:?definí API_SECRET_KEY en .env}
+      API_CORS_ORIGINS: ${API_CORS_ORIGINS:-http://localhost:3000}
+      API_FEED_PAGE_SIZE: ${API_FEED_PAGE_SIZE:-20}
+      # DSN construido desde las partes, a propósito: dentro de la red de
+      # Compose el host es `postgres`, mientras que el DATABASE_URL del .env
+      # apunta a localhost para las herramientas que corren en la máquina.
+      # Son dos contextos de red distintos y necesitan dos cadenas distintas.
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-atalaya}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-atalaya}
+      OPENCTI_URL: ${OPENCTI_URL:-http://opencti:8080}
+      MISP_BASEURL: ${MISP_BASEURL:-https://misp}
+      XP_NOVATO: ${XP_NOVATO:-0}
+      XP_ANALISTA_JUNIOR: ${XP_ANALISTA_JUNIOR:-250}
+      XP_ANALISTA_SENIOR: ${XP_ANALISTA_SENIOR:-1200}
+      XP_CAZADOR_DE_AMENAZAS: ${XP_CAZADOR_DE_AMENAZAS:-4000}
+      TZ: ${TZ:-America/Argentina/Buenos_Aires}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks: [atalaya]
+    # Endurecimiento: sin escalada de privilegios y con el FS raíz de sólo
+    # lectura. /tmp se monta aparte porque uvicorn necesita escribir ahí.
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  # Job de un solo uso: aplica las migraciones y termina. La API no arranca
+  # hasta que este contenedor sale con código 0. Migrar desde el arranque de
+  # la propia API es una carrera esperando a ocurrir en cuanto haya réplicas.
+  migrate:
+    <<: *logging
+    build:
+      context: ../../src/api
+      dockerfile: Dockerfile
+    image: atalaya/api:0.1.0
+    container_name: atalaya-migrate
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-atalaya}:${POSTGRES_PASSWORD:?definí POSTGRES_PASSWORD en .env}@postgres:5432/${POSTGRES_DB:-atalaya}
+      API_SECRET_KEY: ${API_SECRET_KEY:?definí API_SECRET_KEY en .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [atalaya]
+    security_opt:
+      - no-new-privileges:true
+
+  frontend:
+    <<: [*restart, *logging]
+    build:
+      context: ../../src/frontend
+      dockerfile: Dockerfile
+      args:
+        # Se pasan como build-arg y no como environment: Next las incrusta
+        # en el bundle del navegador en tiempo de build.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_CALLSIGN: ${NEXT_PUBLIC_CALLSIGN:-operador}
+    image: atalaya/frontend:0.1.0
+    container_name: atalaya-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      NEXT_PUBLIC_CALLSIGN: ${NEXT_PUBLIC_CALLSIGN:-operador}
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    networks: [atalaya]
+    security_opt:
+      - no-new-privileges:true
+
+  postgres:
+    <<: [*restart, *logging]
+    image: postgres:16-alpine
+    container_name: atalaya-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-atalaya}
+      POSTGRES_USER: ${POSTGRES_USER:-atalaya}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?definí POSTGRES_PASSWORD en .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-atalaya} -d ${POSTGRES_DB:-atalaya}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [atalaya]
+    ports:
+      # Atado a la interfaz de loopback, NO a 0.0.0.0. La base queda
+      # alcanzable para las herramientas del host (alembic, uvicorn en modo
+      # desarrollo, un cliente SQL) y sigue invisible desde la red.
+      # `127.0.0.1:` no es cosmético: sin ese prefijo, Docker publica el
+      # puerto en todas las interfaces y suele saltearse el firewall del host.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+
+  # ════════════════════════════════════════════════════════════════════
+  #  PERFIL cti — plataforma de correlación
+  # ════════════════════════════════════════════════════════════════════
+
+  redis:
+    <<: [*restart, *logging]
+    profiles: [cti]
+    image: redis:7.4-alpine
+    container_name: atalaya-redis
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [atalaya]
+
+  elasticsearch:
+    <<: [*restart, *logging]
+    profiles: [cti]
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.16.1
+    container_name: atalaya-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.ml.enabled=false
+      - thread_pool.search.queue_size=5000
+      - "ES_JAVA_OPTS=-Xms${ELASTIC_MEMORY_SIZE:-2G} -Xmx${ELASTIC_MEMORY_SIZE:-2G}"
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -qE 'green|yellow'"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    networks: [atalaya]
+
+  minio:
+    <<: [*restart, *logging]
+    profiles: [cti]
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    container_name: atalaya-minio
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?definí MINIO_ROOT_USER en .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?definí MINIO_ROOT_PASSWORD en .env}
+    volumes:
+      - s3data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks: [atalaya]
+
+  rabbitmq:
+    <<: [*restart, *logging]
+    profiles: [cti]
+    image: rabbitmq:4.0-management-alpine
+    container_name: atalaya-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:?definí RABBITMQ_DEFAULT_USER en .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:?definí RABBITMQ_DEFAULT_PASS en .env}
+    volumes:
+      - amqpdata:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 20s
+      timeout: 10s
+      retries: 6
+    networks: [atalaya]
+
+  opencti:
+    <<: [*restart, *logging]
+    profiles: [cti]
+    image: opencti/platform:6.4.6
+    container_name: atalaya-opencti
+    environment:
+      - NODE_OPTIONS=--max-old-space-size=8096
+      - APP__PORT=8080
+      - APP__BASE_URL=${OPENCTI_BASE_URL:-http://localhost:8080}
+      - APP__ADMIN__EMAIL=${OPENCTI_ADMIN_EMAIL:?definí OPENCTI_ADMIN_EMAIL en .env}
+      - APP__ADMIN__PASSWORD=${OPENCTI_ADMIN_PASSWORD:?definí OPENCTI_ADMIN_PASSWORD en .env}
+      - APP__ADMIN__TOKEN=${OPENCTI_ADMIN_TOKEN:?debe ser un UUIDv4 — generalo con uuidgen}
+      - APP__APP_LOGS__LOGS_LEVEL=error
+      - APP__HEALTH_ACCESS_KEY=${OPENCTI_HEALTHCHECK_ACCESS_KEY:-changeme}
+      - REDIS__HOSTNAME=redis
+      - REDIS__PORT=6379
+      - ELASTICSEARCH__URL=http://elasticsearch:9200
+      - MINIO__ENDPOINT=minio
+      - MINIO__PORT=9000
+      - MINIO__USE_SSL=false
+      - MINIO__ACCESS_KEY=${MINIO_ROOT_USER}
+      - MINIO__SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - RABBITMQ__HOSTNAME=rabbitmq
+      - RABBITMQ__PORT=5672
+      - RABBITMQ__PORT_MANAGEMENT=15672
+      - RABBITMQ__MANAGEMENT_SSL=false
+      - RABBITMQ__USERNAME=${RABBITMQ_DEFAULT_USER}
+      - RABBITMQ__PASSWORD=${RABBITMQ_DEFAULT_PASS}
+      - SMTP__HOSTNAME=${SMTP_HOSTNAME:-localhost}
+      - SMTP__PORT=25
+      - PROVIDERS__LOCAL__STRATEGY=LocalStrategy
+    ports:
+      - "${OPENCTI_PORT:-8080}:8080"
+    depends_on:
+      redis: { condition: service_healthy }
+      elasticsearch: { condition: service_healthy }
+      minio: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks: [atalaya]
+
+  opencti-worker:
+    <<: [*restart, *logging]
+    profiles: [cti]
+    image: opencti/worker:6.4.6
+    container_name: atalaya-opencti-worker
+    environment:
+      - OPENCTI_URL=http://opencti:8080
+      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
+      - WORKER_LOG_LEVEL=error
+    depends_on:
+      - opencti
+    deploy:
+      mode: replicated
+      replicas: 1
+    networks: [atalaya]
+
+  # ── MISP ────────────────────────────────────────────────────────────
+  misp-db:
+    <<: [*restart, *logging]
+    profiles: [cti]
+    image: mariadb:11.4
+    container_name: atalaya-misp-db
+    command: --innodb-buffer-pool-size=512M --innodb-change-buffering=none --sql-mode=""
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-misp}
+      MYSQL_USER: ${MYSQL_USER:-misp}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?definí MYSQL_PASSWORD en .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?definí MYSQL_ROOT_PASSWORD en .env}
+    volumes:
+      - mispdb:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+    networks: [atalaya]
+
+  misp-modules:
+    <<: [*restart, *logging]
+    profiles: [cti]
+    image: ghcr.io/misp/misp-docker/misp-modules:latest
+    container_name: atalaya-misp-modules
+    environment:
+      REDIS_BACKEND: redis
+    depends_on:
+      redis: { condition: service_healthy }
+    networks: [atalaya]
+
+  misp:
+    <<: [*restart, *logging]
+    profiles: [cti]
+    image: ghcr.io/misp/misp-docker/misp-core:latest
+    container_name: atalaya-misp
+    environment:
+      BASE_URL: ${MISP_BASEURL:-https://localhost:8443}
+      ADMIN_EMAIL: ${MISP_ADMIN_EMAIL:?definí MISP_ADMIN_EMAIL en .env}
+      ADMIN_PASSWORD: ${MISP_ADMIN_PASSWORD:?definí MISP_ADMIN_PASSWORD en .env}
+      MYSQL_HOST: misp-db
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-misp}
+      MYSQL_USER: ${MYSQL_USER:-misp}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      REDIS_FQDN: redis
+      ENABLE_DB_SETTINGS: "true"
+      DISABLE_IPV6: "true"
+    ports:
+      - "${MISP_HTTPS_PORT:-8443}:443"
+    volumes:
+      - mispdata:/var/www/MISP/app/files
+    depends_on:
+      misp-db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    networks: [atalaya]
+
+  # ════════════════════════════════════════════════════════════════════
+  #  PERFIL hunt — reconocimiento OSINT
+  # ════════════════════════════════════════════════════════════════════
+
+  spiderfoot:
+    <<: [*restart, *logging]
+    profiles: [hunt]
+    image: ghcr.io/smicallef/spiderfoot:latest
+    container_name: atalaya-spiderfoot
+    ports:
+      - "5001:5001"
+    volumes:
+      - spiderfootdata:/home/spiderfoot/.spiderfoot
+    networks: [atalaya]
+    security_opt:
+      - no-new-privileges:true

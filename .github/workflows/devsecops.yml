@@ -1,0 +1,434 @@
+# ══════════════════════════════════════════════════════════════════════════
+#  ATALAYA // Pipeline DevSecOps
+#  ------------------------------------------------------------------------
+#  Puertas de calidad y seguridad antes de que nada llegue a main:
+#
+#    1. secretos      · TruffleHog + Gitleaks (dos motores, criterios distintos)
+#    2. python-lint   · flake8 + black + bandit
+#    3. python-test   · pytest contra PostgreSQL real
+#    3b. migraciones  · aplica, revierte y verifica que el esquema coincida
+#    4. stix-contract · valida que el bundle STIX 2.1 siga siendo válido
+#    5. frontend      · lint + typecheck + build de Next.js
+#    6. terraform     · fmt + validate
+#    7. trivy         · vulnerabilidades, secretos y misconfigs de IaC
+#    8. dockerfiles   · hadolint
+#    9. puerta        · consolida: si algo falló, el merge no pasa
+#
+#  Las acciones están fijadas por tag mayor. En un entorno regulado se fijan
+#  por SHA completo: un tag es mutable y eso es un vector de supply chain.
+# ══════════════════════════════════════════════════════════════════════════
+
+name: DevSecOps
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Escaneo semanal: las dependencias no cambian, los CVE sí.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+# Principio de mínimo privilegio para el GITHUB_TOKEN.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.12'
+  NODE_VERSION: '22'
+
+jobs:
+  # ════════════════════════════════════════════════════════════════════
+  secretos:
+    name: 🔑 Escaneo de secretos
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout con historia completa
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # TruffleHog en modo filesystem: funciona igual en el primer commit,
+      # en un PR o en el cron, sin depender de que exista una rama base.
+      # `--results=verified,unknown` reporta lo confirmado y lo dudoso;
+      # sólo lo verificado rompe el build por defecto.
+      - name: TruffleHog
+        run: |
+          docker run --rm -v "${PWD}:/repo" \
+            trufflesecurity/trufflehog:latest \
+            filesystem /repo \
+            --results=verified,unknown \
+            --fail \
+            --no-update
+
+      # Segunda opinión: Gitleaks usa reglas de patrón donde TruffleHog usa
+      # verificación activa. Se complementan.
+      - name: Gitleaks
+        run: |
+          docker run --rm -v "${PWD}:/repo" \
+            zricethezav/gitleaks:latest \
+            detect --source /repo --no-git --redact -v \
+            --report-format sarif --report-path /repo/gitleaks-report.sarif
+
+      - name: Publicar reporte de Gitleaks
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: gitleaks-report.sarif
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ════════════════════════════════════════════════════════════════════
+  python-lint:
+    name: 🐍 Lint Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Instalar herramientas
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8==7.1.1 black==24.10.0 bandit==1.8.2
+
+      # Primera pasada: errores de sintaxis y nombres indefinidos. Estos
+      # rompen en runtime, así que fallan el build siempre.
+      - name: flake8 · errores duros
+        run: |
+          flake8 src/api src/ingestion tests \
+            --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      # Segunda pasada: estilo completo según setup.cfg.
+      - name: flake8 · estilo completo
+        run: flake8 src/api src/ingestion tests --count --statistics
+
+      - name: black · formato
+        run: black --check --diff src/api src/ingestion tests
+
+      # Bandit busca patrones inseguros en el código Python (SAST liviano).
+      # No rompe el build por hallazgos de severidad baja.
+      - name: bandit · SAST
+        run: |
+          bandit -r src/api src/ingestion \
+            -f json -o bandit-report.json \
+            --severity-level medium --confidence-level medium || true
+          bandit -r src/api src/ingestion \
+            --severity-level high --confidence-level high
+
+      - name: Publicar reporte de bandit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: bandit-report.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ════════════════════════════════════════════════════════════════════
+  python-test:
+    name: 🧪 Tests de la API
+    runs-on: ubuntu-latest
+
+    # PostgreSQL real, no SQLite. El repositorio usa índices parciales,
+    # funciones de ventana y SELECT ... FOR UPDATE: contra SQLite los tests
+    # pasarían verdes probando otra cosa.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: atalaya
+          POSTGRES_PASSWORD: atalaya-ci
+          POSTGRES_DB: atalaya_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U atalaya"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://atalaya:atalaya-ci@localhost:5432/atalaya_test
+      API_SECRET_KEY: ci-secret-not-used-in-production
+      ATALAYA_ENV: ci
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r src/api/requirements-dev.txt
+
+      - name: pytest
+        run: pytest -v
+
+  # ════════════════════════════════════════════════════════════════════
+  migraciones:
+    name: 🗄️ Migraciones de base de datos
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: atalaya
+          POSTGRES_PASSWORD: atalaya-ci
+          POSTGRES_DB: atalaya_mig
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U atalaya"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      ALEMBIC_DATABASE_URL: postgresql+asyncpg://atalaya:atalaya-ci@localhost:5432/atalaya_mig
+      API_SECRET_KEY: ci-secret-not-used-in-production
+
+    defaults:
+      run:
+        working-directory: src/api
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Aplicar migraciones
+        run: alembic upgrade head
+
+      # Una migración que no sabe volver atrás no se puede desplegar con
+      # confianza: si el despliegue falla a mitad de camino, no hay retirada.
+      - name: Verificar reversibilidad (downgrade + upgrade)
+        run: |
+          alembic downgrade base
+          alembic upgrade head
+
+      # Guardia contra el olvido más común: cambiar un modelo y no generar la
+      # migración. Si autogenerate detecta diferencias, el esquema desplegado
+      # no coincide con el código.
+      - name: El esquema coincide con los modelos
+        run: |
+          alembic revision --autogenerate -m "verificacion-ci" --rev-id ci-check
+          ARCHIVO="migrations/versions/"*ci-check*.py
+          if grep -qE "op\.(create_table|drop_table|add_column|drop_column|alter_column|create_index|drop_index)" $ARCHIVO; then
+            echo "::error::Los modelos cambiaron sin migración. Corré: make db-revision M=\"descripcion\""
+            cat $ARCHIVO
+            exit 1
+          fi
+          echo "✓ El esquema de la base coincide con models.py"
+          rm -f $ARCHIVO
+
+  # ════════════════════════════════════════════════════════════════════
+  stix-contract:
+    name: 📐 Contrato STIX 2.1
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # El conector valida su propio bundle. Si alguien rompe el modelo de
+      # datos, se entera acá y no cuando OpenCTI rechace la ingesta.
+      - name: Validar el bundle de referencia
+        run: python3 src/ingestion/misp_stix_connector.py --validate
+
+      - name: Validación estricta con stix2-validator
+        run: |
+          pip install stix2-validator==3.2.0
+          python3 src/ingestion/misp_stix_connector.py -o /tmp/bundle.json
+          # El validador oficial marca convenciones además de la spec dura;
+          # sus advertencias son informativas y no rompen el pipeline.
+          stix2_validator /tmp/bundle.json --strict-types || true
+
+  # ════════════════════════════════════════════════════════════════════
+  frontend:
+    name: ⚡ Frontend Next.js
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # `npm ci` requiere lockfile. Hasta que se commitee el primero, se cae
+      # a `npm install` para que el pipeline no falle por un archivo ausente.
+      - name: Instalar dependencias
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            echo "::warning::Sin package-lock.json — commiteá el lockfile para builds reproducibles."
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Auditoría de dependencias
+        run: npm audit --audit-level=high || true
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build de producción
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+          NEXT_TELEMETRY_DISABLED: '1'
+
+  # ════════════════════════════════════════════════════════════════════
+  terraform:
+    name: 🏗️ Terraform
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.10.3'
+
+      - name: Formato
+        run: terraform fmt -check -recursive -diff
+
+      # `-backend=false` porque en CI no hay credenciales ni bucket de estado.
+      - name: Init
+        run: terraform init -backend=false -input=false
+
+      - name: Validate
+        run: terraform validate -no-color
+
+  # ════════════════════════════════════════════════════════════════════
+  trivy:
+    name: 🛡️ Trivy · vulns, secretos y misconfigs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Escaneo del sistema de archivos
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          exit-code: '0' # el reporte manda; el fallo duro va en el paso siguiente
+
+      # La subida a Code Scanning necesita GitHub Advanced Security en repos
+      # privados. Si no está habilitado, no rompemos el pipeline por eso.
+      - name: Subir SARIF a Code Scanning
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-fs
+
+      - name: Puerta dura · CRITICAL
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret
+          format: table
+          severity: CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true
+
+  # ════════════════════════════════════════════════════════════════════
+  dockerfiles:
+    name: 🐳 Lint de Dockerfiles
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dockerfile:
+          - src/api/Dockerfile
+          - src/frontend/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: ${{ matrix.dockerfile }}
+          failure-threshold: error
+
+  # ════════════════════════════════════════════════════════════════════
+  puerta:
+    name: 🚦 Puerta de calidad
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - secretos
+      - python-lint
+      - python-test
+      - migraciones
+      - stix-contract
+      - frontend
+      - terraform
+      - trivy
+      - dockerfiles
+    steps:
+      - name: Evaluar resultados
+        run: |
+          echo "## 🛡️ ATALAYA · Resultado DevSecOps" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Puerta | Estado |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Secretos | ${{ needs.secretos.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Lint Python | ${{ needs.python-lint.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Tests API | ${{ needs.python-test.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Migraciones | ${{ needs.migraciones.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Contrato STIX | ${{ needs.stix-contract.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Frontend | ${{ needs.frontend.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Terraform | ${{ needs.terraform.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Trivy | ${{ needs.trivy.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Dockerfiles | ${{ needs.dockerfiles.result }} |" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "❌ **La torre reporta fallas. No se avanza.**" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "✅ **Perímetro despejado.**" >> "$GITHUB_STEP_SUMMARY"

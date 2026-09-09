@@ -1,0 +1,52 @@
+# ATALAYA // Copiá a terraform.tfvars y ajustá.
+# terraform.tfvars está en .gitignore: puede contener tu IP real.
+
+# ── Obligatorio ───────────────────────────────────────────────────────
+project_id = "atalaya-cti-123456"
+
+# OBLIGATORIO. Tu IP pública fija o el rango de tu VPN.
+# Obtenela con:  curl -s https://ifconfig.me
+# No se admite 0.0.0.0/0: Terraform aborta el plan.
+admin_cidrs = ["203.0.113.10/32"]
+
+# ── Ubicación ─────────────────────────────────────────────────────────
+region = "us-central1"
+zone   = "us-central1-a"
+
+environment = "dev"
+
+# ── Cloud Run ─────────────────────────────────────────────────────────
+# Dejalo bajo: es el freno contra la factura.
+max_instances = 3
+cpu_limit     = "1"
+memory_limit  = "512Mi"
+
+# true = demo pública sin autenticación de IAM.
+allow_public_console = true
+
+# Vacío = imagen placeholder de Google, para que el primer apply funcione
+# antes de que existan tus builds. Después completá con la ruta real.
+api_image      = ""
+frontend_image = ""
+
+# ── Base de datos ─────────────────────────────────────────────────────
+# false = usás Postgres externo (Neon / Supabase) y cargás la cadena de
+# conexión en el secreto atalaya-database-url. Es la ruta de costo cero.
+# true  = Cloud SQL con IP privada. NO tiene nivel gratuito.
+enable_cloud_sql = false
+
+# ── Nodo CTI ──────────────────────────────────────────────────────────
+# El stack OpenCTI + MISP + ElasticSearch pide ~8 GB sostenidos.
+# Encendelo sólo cuando lo vayas a usar.
+enable_cti_node  = false
+cti_machine_type = "e2-standard-2"
+cti_disk_gb      = 100
+
+# ── Observabilidad ────────────────────────────────────────────────────
+enable_flow_logs  = true
+flow_log_sampling = 0.5
+
+extra_labels = {
+  owner       = "gon"
+  cost_center = "seguridad"
+}

@@ -1,0 +1,11 @@
+# ATALAYA // Ingesta — dependencias
+# El conector STIX de referencia (misp_stix_connector.py) corre con la
+# librería estándar únicamente. Lo de abajo es para los conectores que
+# hablan con APIs reales.
+requests==2.32.3
+pymisp==2.5.3
+pycti==6.4.6
+stix2==3.0.1
+stix2-validator==3.2.0
+python-dotenv==1.0.1
+tenacity==9.0.0

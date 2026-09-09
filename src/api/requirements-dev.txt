@@ -1,0 +1,11 @@
+# ATALAYA // herramientas de desarrollo y CI
+-r requirements.txt
+pytest==8.3.4
+pytest-asyncio==0.25.2
+flake8==7.1.1
+black==24.10.0
+bandit==1.8.2
+
+# Postgres real y efímero para los tests: nada de SQLite. Si el motor de
+# los tests difiere del de producción, los tests mienten.
+pgserver==0.1.4
