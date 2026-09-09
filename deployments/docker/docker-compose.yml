@@ -37,6 +37,7 @@ networks:
 
 volumes:
   pgdata:
+  ingestcache:
   esdata:
   s3data:
   amqpdata:
@@ -109,6 +110,45 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    networks: [atalaya]
+    security_opt:
+      - no-new-privileges:true
+
+  # Ciclo de ingesta OSINT. Va aparte de la API a propósito: una tarea que
+  # sale a Internet cada quince minutos no debe compartir proceso con la que
+  # atiende a los analistas — si una fuente cuelga la conexión, no queremos
+  # que se lleve puesta la consola.
+  ingesta:
+    <<: [*restart, *logging]
+    profiles: [ingesta]
+    build:
+      context: ../../src/api
+      dockerfile: Dockerfile
+    image: atalaya/api:0.1.0
+    container_name: atalaya-ingesta
+    working_dir: /app
+    command: ["python", "/ingestion/run.py", "--loop"]
+    volumes:
+      - ../../src/ingestion:/ingestion:ro
+      - ingestcache:/var/cache/atalaya
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-atalaya}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-atalaya}
+      API_SECRET_KEY: ${API_SECRET_KEY:?definí API_SECRET_KEY en .env}
+      INGEST_INTERVAL_MINUTES: ${INGEST_INTERVAL_MINUTES:-15}
+      INGEST_MAX_IOCS_PER_RUN: ${INGEST_MAX_IOCS_PER_RUN:-500}
+      INGEST_CACHE_DIR: /var/cache/atalaya
+      CONNECTOR_LOG_LEVEL: ${CONNECTOR_LOG_LEVEL:-info}
+      # Sin estas, el conector avisa y se saltea la fuente. No falla.
+      OTX_API_KEY: ${OTX_API_KEY:-}
+      OTX_PULSE_LIMIT: ${OTX_PULSE_LIMIT:-50}
+      ABUSECH_AUTH_KEY: ${ABUSECH_AUTH_KEY:-}
+      PYTHONPATH: /app:/ingestion:/ingestion/sources
+      TZ: ${TZ:-America/Argentina/Buenos_Aires}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks: [atalaya]
     security_opt:
       - no-new-privileges:true

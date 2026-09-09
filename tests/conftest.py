@@ -23,6 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 API_DIR = REPO_ROOT / "src" / "api"
 sys.path.insert(0, str(API_DIR))
 sys.path.insert(0, str(REPO_ROOT / "src" / "ingestion"))
+sys.path.insert(0, str(REPO_ROOT / "src" / "ingestion" / "sources"))
 
 
 @pytest.fixture(scope="session")

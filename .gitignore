@@ -100,6 +100,11 @@ deployments/docker/volumes/
 
 # ── Inteligencia cruda / artefactos de ingesta ───────────────
 # Nunca commitear feeds crudos ni muestras de malware.
+# La caché del catálogo KEV pesa 1,7 MB y se regenera sola.
+atalaya-cti/
+kev.json
+kev.etag
+kev.last-modified
 data/raw/
 data/staging/
 *.stix.json

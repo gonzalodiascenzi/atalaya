@@ -70,6 +70,11 @@ ATALAYA_NAMESPACE = uuid.UUID("6ba7b812-9dad-11d1-80b4-00c04fd430c8")
 #: precargados, así que no hace falta embeberlos en el bundle.
 #: Nota histórica: la spec sigue llamándolo "TLP:WHITE"; TLP 2.0 lo renombró
 #: a TLP:CLEAR, pero el objeto de marcado es el mismo.
+#: Semilla de la identidad que firma lo que publicamos. Se exporta para que
+#: los conectores reales usen exactamente el mismo `created_by_ref` y no
+#: aparezcan tres autores distintos para la misma organización.
+ATALAYA_IDENTITY_SEED = "atalaya-cti-ops"
+
 TLP_CLEAR = "marking-definition--613f2e26-407d-48c7-9eca-b8e91df99dc9"
 TLP_GREEN = "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
 TLP_AMBER = "marking-definition--f88d31f6-486f-44da-b317-01333bde0b82"
@@ -172,7 +177,7 @@ def build_ransomware_bundle(case: dict[str, Any] | None = None) -> dict[str, Any
     identity = {
         "type": "identity",
         "spec_version": "2.1",
-        "id": stix_id("identity", "atalaya-cti-ops"),
+        "id": stix_id("identity", ATALAYA_IDENTITY_SEED),
         "created": created,
         "modified": created,
         "name": "ATALAYA CTI Ops",

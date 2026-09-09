@@ -100,6 +100,10 @@ sequenceDiagram
 | **Penalización por falso positivo** | Sólo recompensas | En un SOC real, gritar "lobo" tiene costo. Entrenar sin ese costo produce analistas ruidosos. |
 | **Penalización sin multiplicador de severidad** | Castigo proporcional | Castigar x2 por equivocarse en algo difícil desincentiva justamente lo que querés fomentar: que se metan con lo difícil. |
 | **IoCs sintéticos (RFC 5737 / 2606)** | IoCs reales en el catálogo demo | Alguien va a copiar y pegar esto a un firewall. Que no bloquee infraestructura de un tercero. |
+| **Contar familias de fuente, no nombres de fuente** | Contar cada API como una corroboración | ThreatFox, URLhaus y MalwareBazaar son un solo operador. Contarlos como tres haría que un IoC se corrobore a sí mismo. |
+| **Sin corroboración y baja confianza ⇒ BENIGN** | Expirar todo lo no confirmado | Las misiones que enseñan a NO bloquear son tan valiosas como las otras, y sin ellas "decir siempre malicioso" gana. |
+| **Evidencia a mitad de camino ⇒ sin resolver** | Forzar un veredicto para poder puntuar | Enseñar una lección falsa es peor que no enseñar ninguna. |
+| **El worker de ingesta corre aparte de la API** | Una tarea de fondo dentro del proceso web | Si una fuente cuelga la conexión, no puede llevarse puesta la consola. |
 | **Defang obligatorio en la UI** | Mostrar el observable crudo | Un feed de amenazas con URLs clickeables es un incidente esperando a ocurrir. |
 | **Degradación autónoma del frontend** | Pantalla de error | Un entorno de entrenamiento que muere cuando muere el backend no entrena a nadie. |
 | **Perfiles en Docker Compose** | Un compose monolítico | El stack CTI completo pide ~8 GB. Nadie debería necesitar eso para tocar el frontend. |
@@ -190,7 +194,6 @@ tener más lectores que el secreto que protege.
 | Rate limiting distribuido (hoy es por proceso) | Con N workers hay N contadores | 🟡 Media |
 | El feed recicla el catálogo indefinidamente (`has_more` siempre true) | Con 6 misiones, el scroll infinito repite las mismas en bucle visible | 🟡 Media |
 | La URL de CORS del frontend se arma a mano en Terraform | Si el proyecto usa el otro formato de URL de Cloud Run, el navegador bloquea la API | 🟡 Media |
-| Conectores reales de OTX / ThreatFox / KEV | El feed sirve el catálogo de referencia | 🟡 Media |
 | Firewall por `target_service_accounts` en lugar de `target_tags` | Una etiqueta la puede reclamar cualquier instancia | 🟡 Media |
 | Proveedor OIDC además de contraseñas locales | Hoy cada quien mantiene una contraseña más | 🟡 Media |
 | Doble token anti-CSRF además de SameSite | SameSite=strict alcanza hoy, pero es una sola capa | 🟢 Baja |

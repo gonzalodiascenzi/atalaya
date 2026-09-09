@@ -76,6 +76,23 @@ api-dev: ## API en modo desarrollo con reload (necesita make db-up primero)
 front-dev: ## Frontend Next.js en modo desarrollo
 	cd src/frontend && npm run dev
 
+.PHONY: ingest-dry
+ingest-dry: ## Consulta las fuentes OSINT y muestra, sin escribir nada
+	python3 src/ingestion/run.py --dry-run
+
+.PHONY: ingest
+ingest: ## Consulta las fuentes y persiste las misiones
+	python3 src/ingestion/run.py --ingest
+
+.PHONY: ingest-resolve
+ingest-resolve: ## Cierra la corroboración de las misiones vencidas
+	python3 src/ingestion/run.py --resolve
+
+.PHONY: ingest-loop
+ingest-loop: ## Ciclo continuo de ingesta (perfil docker `ingesta`)
+	$(COMPOSE) --profile ingesta up -d ingesta
+	@echo "[+] Ciclo cada $${INGEST_INTERVAL_MINUTES:-15} min. Logs: make logs"
+
 .PHONY: stix
 stix: ## Genera el bundle STIX 2.1 de ejemplo (caso ransomware)
 	python3 src/ingestion/misp_stix_connector.py --pretty

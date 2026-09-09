@@ -101,7 +101,7 @@ Detalle completo, decisiones de diseño y deuda técnica consciente:
 
 | Capa | Tecnología | Rol |
 |---|---|---|
-| 🌐 **Ingesta** | Python 3.12 · `pymisp` · `pycti` | Consumen OTX, abuse.ch, CISA KEV y SpiderFoot; normalizan a STIX 2.1 |
+| 🌐 **Ingesta** | Python 3.12 · `httpx` · `tenacity` | CISA KEV, ThreatFox y OTX → STIX 2.1, con corroboración entre operadores |
 | 🧠 **Correlación** | OpenCTI 6.4 · MISP | Grafo de conocimiento y compartición de IoCs |
 | 📐 **Modelo de datos** | STIX 2.1 · MITRE ATT&CK | Único formato que cruza fronteras entre componentes |
 | ⚡ **API** | FastAPI · Pydantic v2 | Feed de Misiones y motor de progresión |
@@ -292,11 +292,14 @@ python3 src/ingestion/misp_stix_connector.py --validate
 | `-o archivo.json` | Escribe a disco |
 | `--push` | Publica en OpenCTI (requiere `pycti` y token) |
 
-> 🧪 **Los IoCs del catálogo son sintéticos a propósito**: usan rangos
-> reservados por RFC 5737 (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`)
-> y dominios RFC 2606 (`.example`). Si alguien los copia a un firewall, no
-> bloquea infraestructura de un tercero real. Las **familias de malware y las
-> técnicas ATT&CK sí son reales**: ahí está el valor didáctico.
+> 🧪 **El catálogo de arranque es sintético a propósito**: usa rangos
+> reservados por RFC 5737 y dominios RFC 2606, así que copiarlo a un firewall
+> no bloquea infraestructura de terceros. Sirve para que la consola tenga algo
+> que mostrar antes de conectar nada.
+>
+> **Los IoCs que entran por los conectores sí son reales**, y por eso el
+> normalizador descarta cualquier observable que caiga en rango reservado
+> antes de publicarlo como amenaza.
 
 ---
 
@@ -409,6 +412,74 @@ confianza: si el despliegue falla a mitad de camino, no hay retirada.
 Los tests corren contra PostgreSQL **real** porque el repositorio usa índices
 parciales, funciones de ventana y `SELECT ... FOR UPDATE`. Contra SQLite
 pasarían verdes probando otra cosa.
+
+## 📡 Ingesta
+
+Tres conectores contra fuentes OSINT reales. Cada uno aporta algo distinto:
+
+| Fuente | Qué aporta | Credencial |
+|---|---|---|
+| **CISA KEV** | Verdad de referencia **dura**: explotación activa observada, no inferida | ninguna, es público |
+| **abuse.ch ThreatFox** | IoCs de C2 con familia de malware asociada | `ABUSECH_AUTH_KEY` |
+| **AlienVault OTX** | Contexto narrativo: campañas, familias, técnicas ATT&CK | `OTX_API_KEY` |
+
+```bash
+make ingest-dry        # consulta y muestra, sin escribir nada
+make ingest            # consulta y persiste las misiones
+make ingest-resolve    # cierra la corroboración vencida
+make ingest-loop       # ciclo continuo (perfil docker `ingesta`)
+```
+
+Sin credenciales, cada conector **avisa y se saltea**. CISA KEV no necesita
+ninguna, así que el sistema produce misiones reales desde el primer minuto.
+
+### Contar operadores, no APIs
+
+Es la decisión que sostiene la corroboración, y es fácil de errar en silencio:
+
+> ThreatFox, URLhaus y MalwareBazaar son tres APIs distintas del **mismo
+> operador** (abuse.ch). Un indicador presente en las tres no está corroborado
+> por tres partes: está corroborado por una, tres veces.
+
+Si eso contara como 3, cruzaría el umbral solo y el sistema declararía verdades
+que ninguna segunda parte verificó. Por eso la unidad de conteo es la
+**familia** (`SourceFamily`), no el nombre de la fuente. Hay un test dedicado a
+que nadie lo "optimice" después.
+
+### Cómo se resuelve una misión
+
+```
+T+0h    Una sola fuente reporta el IoC · confianza 55
+        → entra AMBIGUA · el analista apuesta a ciegas
+
+T+72h   ¿Cuántos OPERADORES distintos terminaron corroborando?
+        ≥ 3            → MALICIOUS  · se califican los veredictos
+        1, baja conf.  → BENIGN     · nadie más lo vio: era ruido
+        2             → sin resolver · la misión expira sin calificar
+```
+
+El tercer caso importa tanto como los otros dos: **no se inventa una verdad
+para poder puntuar**. Enseñarle al analista una lección falsa es peor que no
+enseñarle ninguna.
+
+### Buena vecindad con las fuentes
+
+Las APIs OSINT gratuitas se sostienen con buena fe, así que el respeto por sus
+límites es parte del conector, no una opción:
+
+- Espaciado mínimo entre peticiones, por fuente.
+- Reintentos con espera creciente (2s → 4s → 8s); un `429` **corta** la corrida
+  en vez de insistir.
+- El catálogo KEV pesa 1,7 MB y cambia pocas veces por semana: se pide con
+  petición condicional y sólo se transfiere si cambió.
+
+> ⚠️ Medido contra el servidor real: el CDN de CISA **expone** un `ETag` pero
+> **ignora** `If-None-Match` — sólo honra `If-Modified-Since`. Confiar sólo en
+> el ETag, que es lo que uno escribiría por costumbre, deja la optimización
+> como código muerto sin que nada falle a la vista.
+
+Una fuente caída **nunca** tumba la corrida: cada conector se aísla, se
+registra el fallo y se sigue con los demás.
 
 ## 🎯 El bucle de verificación
 
@@ -659,7 +730,11 @@ atalaya/
 │   │   ├── stix_feed.py     # generador del Feed de Misiones
 │   │   ├── schemas.py · config.py · Dockerfile
 │   ├── ingestion/
-│   │   └── misp_stix_connector.py   # STIX 2.1 puro, sin dependencias
+│   │   ├── misp_stix_connector.py   # STIX 2.1 puro, sin dependencias
+│   │   ├── base.py          # contrato común · SourceFamily
+│   │   ├── sources/         # cisa_kev · threatfox · otx
+│   │   ├── normalize.py     # indicador crudo → misión
+│   │   └── run.py           # orquestador CLI
 │   └── frontend/            # Next.js 15
 │       ├── app/page.tsx     # consola: panel + feed infinito
 │       ├── tailwind.config.ts  # sistema de diseño cyberpunk
@@ -668,7 +743,7 @@ atalaya/
 ├── 📚 docs/
 │   ├── VERIFICACION.md      # ← el diseño que define el producto
 │   └── ARQUITECTURA.md
-└── 🧪 tests/                # 89 tests: identidad, progresión, persistencia, verificación y STIX
+└── 🧪 tests/                # 120 tests: identidad, progresión, persistencia, verificación, ingesta y STIX
 ```
 
 ---
@@ -684,7 +759,7 @@ atalaya/
 - [x] Persistencia en PostgreSQL con progresión derivada de eventos
 - [x] Bucle de verificación con puntuación por calibración (Brier)
 - [x] Autenticación con JWT + refresh rotativo y roles
-- [ ] 🟡 Conectores reales de OTX, ThreatFox y CISA KEV
+- [x] Conectores reales de CISA KEV, ThreatFox y OTX con corroboración entre operadores
 - [ ] 🟡 Sincronización bidireccional OpenCTI ↔ MISP
 - [ ] 🟢 Modo competitivo por equipos (CTF con multiplicador ×2)
 - [ ] 🟢 Editor de reglas YARA/Sigma con validación en vivo

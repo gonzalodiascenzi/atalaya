@@ -70,8 +70,16 @@ class Analyst(Base):
     # uno anónimo, y un constraint sin nombre no se puede soltar en el
     # downgrade. Una migración irreversible es una migración sin retirada.
     email: Mapped[str | None] = mapped_column(String(254), nullable=True)
-    role: Mapped[str] = mapped_column(String(16), nullable=False, default="ANALYST")
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # `server_default` además de `default`: el primero vive en el esquema y es
+    # lo que permite agregar estas columnas NOT NULL sobre una tabla que ya
+    # tiene filas. Declararlo acá mantiene modelo y base diciendo lo mismo —
+    # si no, cada autogenerate propone borrarlos.
+    role: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="ANALYST", server_default="ANALYST"
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
     last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -81,7 +89,7 @@ class Analyst(Base):
     # por proceso significa N veces los intentos permitidos, y un reinicio
     # borra el bloqueo justo cuando más hace falta.
     failed_login_attempts: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0
+        Integer, nullable=False, default=0, server_default="0"
     )
     locked_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -160,6 +168,11 @@ class MissionRecord(Base):
     __tablename__ = "missions"
 
     mission_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    #: Huella del observable que originó la misión. Permite reconciliar por
+    #: indicador aunque el ID de misión cambie de esquema en el futuro.
+    fingerprint: Mapped[str | None] = mapped_column(
+        String(512), nullable=True, index=True
+    )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     severity: Mapped[str] = mapped_column(String(16), nullable=False)
     base_xp: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
@@ -303,4 +316,58 @@ class RefreshToken(Base):
             "analyst_id",
             postgresql_where=text("revoked_at IS NULL"),
         ),
+    )
+
+
+class IndicatorSighting(Base):
+    """Qué fuente vio qué indicador, y cuándo.
+
+    Es la tabla que hace real la corroboración diferida. Antes,
+    `independent_sources` era un número que alguien escribía a mano; acá se
+    **cuenta**: una fila por (misión, fuente), y la independencia es el
+    número de FAMILIAS distintas — no de fuentes.
+
+    La distinción importa: ThreatFox, URLhaus y MalwareBazaar son tres APIs
+    del mismo operador. Contarlas como tres corroboraciones independientes
+    haría que un indicador cruce el umbral solo, y el sistema declararía
+    verdades que ninguna segunda parte verificó.
+    """
+
+    __tablename__ = "indicator_sightings"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    mission_id: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("missions.mission_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    fingerprint: Mapped[str] = mapped_column(String(512), nullable=False, index=True)
+
+    source_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    #: La unidad de independencia. Se guarda desnormalizada a propósito: es
+    #: lo que se agrupa en cada consulta y no queremos un join para contarlo.
+    source_family: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_reference: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    source_confidence: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
+
+    first_reported_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    sample_available: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    kev_listed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    mission: Mapped[MissionRecord] = relationship()
+
+    __table_args__ = (
+        # Una fila por fuente y misión: reingerir el mismo IoC actualiza, no
+        # acumula. Sin esto, un conector corriendo cada quince minutos
+        # inflaría el conteo de corroboración con sus propias repeticiones.
+        UniqueConstraint("mission_id", "source_name", name="uq_sighting_por_fuente"),
     )

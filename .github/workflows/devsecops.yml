@@ -7,6 +7,7 @@
 #    2. python-lint   · flake8 + black + bandit
 #    3. python-test   · pytest contra PostgreSQL real
 #    3b. migraciones  · aplica, revierte y verifica que el esquema coincida
+#    4b. ingesta      · conectores OSINT con fixtures, sin tocar la red
 #    4. stix-contract · valida que el bundle STIX 2.1 siga siendo válido
 #    5. frontend      · lint + typecheck + build de Next.js
 #    6. terraform     · fmt + validate
@@ -259,6 +260,15 @@ jobs:
       # datos, se entera acá y no cuando OpenCTI rechace la ingesta.
       - name: Validar el bundle de referencia
         run: python3 src/ingestion/misp_stix_connector.py --validate
+
+      # La ingesta real corre en el job de tests con fixtures. Acá sólo se
+      # comprueba que el CLI arranca y que sus dependencias resuelven: un
+      # orquestador que no importa es un ciclo de producción que no arranca.
+      - name: El orquestador de ingesta carga
+        run: |
+          pip install -r src/ingestion/requirements.txt
+          python3 src/ingestion/run.py --help > /dev/null
+          echo "✓ run.py operativo"
 
       - name: Validación estricta con stix2-validator
         run: |

@@ -189,9 +189,11 @@ Honestidad sobre los límites:
 - **El arranque en frío.** Sin analistas no hay consenso entre pares, y sin
   historial no hay calibración. Los primeros 100 usuarios necesitan misiones
   curadas.
-- **Sesgo de las fuentes.** Si tres feeds copian del mismo origen, la
-  "corroboración independiente" es una ilusión. Hay que mantener un grafo de
-  procedencia de las fuentes, y todavía no existe.
+- **Sesgo de las fuentes.** *Parcialmente resuelto*: la independencia se cuenta
+  por **operador** (`SourceFamily`), no por API, así que las tres puertas de
+  abuse.ch cuentan como una. Lo que sigue faltando es el caso más sutil: dos
+  operadores realmente distintos que copian del mismo origen upstream. Eso
+  necesita un grafo de procedencia y todavía no existe.
 - **La verdad no siempre llega.** Muchos IoCs nunca se corroboran ni se
   refutan. Esas misiones expiran sin calificar, y hay que decírselo al
   analista en vez de dejarlas colgadas.
