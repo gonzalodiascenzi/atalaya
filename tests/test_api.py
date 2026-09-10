@@ -1,6 +1,7 @@
 """ATALAYA // Tests de la API: feed, progresión y contrato STIX."""
 
 import pytest
+from conftest import TEST_PASSWORD
 
 
 # ── Salud ─────────────────────────────────────────────────────────────
@@ -199,7 +200,7 @@ def test_callsign_se_sanitiza(client):
         "/api/v1/auth/register",
         json={
             "callsign": "  GON<script>  ",
-            "password": "frase-larga-de-prueba-atalaya-2026",
+            "password": TEST_PASSWORD,
         },
     )
     client.cookies.clear()
@@ -210,7 +211,7 @@ def test_callsign_se_sanitiza(client):
 def test_callsign_demasiado_corto_es_rechazado(client):
     res = client.post(
         "/api/v1/auth/register",
-        json={"callsign": "!", "password": "frase-larga-de-prueba-atalaya-2026"},
+        json={"callsign": "!", "password": TEST_PASSWORD},
     )
     assert res.status_code == 422
 

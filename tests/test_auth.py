@@ -8,6 +8,7 @@ este archivo protege esa corrección.
 """
 
 import pytest
+from conftest import TEST_PASSWORD
 
 from auth import (
     MIN_PASSWORD_LENGTH,
@@ -20,7 +21,7 @@ from auth import (
     verify_password,
 )
 
-CLAVE = "frase-larga-de-prueba-atalaya-2026"
+CLAVE = TEST_PASSWORD
 SECRETO = "s" * 64
 
 

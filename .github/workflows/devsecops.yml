@@ -98,10 +98,14 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
 
+      # Las versiones salen de requirements-dev.txt y de ningún otro lado. Antes
+      # este paso fijaba black==24.10.0 a mano: cuando se actualizó a 26.3.1 por
+      # sus CVEs, local y CI formateaban distinto y el lint fallaba en GitHub
+      # con código que localmente pasaba limpio.
       - name: Instalar herramientas
         run: |
           python -m pip install --upgrade pip
-          pip install flake8==7.1.1 black==24.10.0 bandit==1.8.2
+          pip install -r src/api/requirements-dev.txt
 
       # Primera pasada: errores de sintaxis y nombres indefinidos. Estos
       # rompen en runtime, así que fallan el build siempre.
@@ -192,10 +196,12 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
 
+      # Los tests cubren también la ingesta (conectores, normalización, feed),
+      # así que necesitan sus dependencias además de las de la API.
       - name: Instalar dependencias
         run: |
           python -m pip install --upgrade pip
-          pip install -r src/api/requirements-dev.txt
+          pip install -r src/api/requirements-dev.txt -r src/ingestion/requirements.txt
 
       - name: pytest
         run: pytest -v
@@ -373,7 +379,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Escaneo del sistema de archivos
-        uses: aquasecurity/trivy-action@0.29.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -394,7 +400,7 @@ jobs:
           category: trivy-fs
 
       - name: Puerta dura · CRITICAL
-        uses: aquasecurity/trivy-action@0.29.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .

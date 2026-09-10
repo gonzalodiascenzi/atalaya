@@ -112,7 +112,10 @@ def fresh_engine():
 # ══════════════════════════════════════════════════════════════════════
 
 #: Frase larga y aburrida. Cumple el mínimo sin ser un secreto de verdad.
-TEST_PASSWORD = "frase-larga-de-prueba-atalaya-2026"
+#: Es la ÚNICA definición en toda la suite, a propósito: Gitleaks marca
+#: cualquier `password = "..."` largo, y es preferible que perdone una línea
+#: explícita y revisada que tres copias sueltas del mismo literal.
+TEST_PASSWORD = "frase-larga-de-prueba-atalaya-2026"  # gitleaks:allow
 
 
 @pytest.fixture(scope="session")
