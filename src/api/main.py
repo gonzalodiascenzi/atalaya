@@ -40,6 +40,7 @@ from auth import (
     REFRESH_TTL,
     AuthError,
     Role,
+    WeakPasswordError,
     decode_access_token,
     issue_access_token,
 )
@@ -461,6 +462,10 @@ async def register(
     try:
         analyst = await auth.register(
             callsign=payload.callsign, password=payload.password, email=payload.email
+        )
+    except WeakPasswordError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         )
     except AuthError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))

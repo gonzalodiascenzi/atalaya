@@ -8,13 +8,14 @@
 
 import type {
   AnalystState,
+  Calibration,
   FeedResponse,
-  LevelUpResponse,
   RankInfo,
   Session,
-  XPEventId,
+  VerdictResult,
   Severity,
 } from './types';
+import type { Call } from './scoring';
 
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') ?? 'http://localhost:8000';
@@ -125,18 +126,6 @@ export function fetchRanks(): Promise<RankInfo[]> {
   return request<RankInfo[]>('/api/v1/ranks');
 }
 
-export function submitXPEvent(payload: {
-  event: XPEventId;
-  mission_id?: string;
-  severity?: Severity;
-}): Promise<LevelUpResponse> {
-  // Sin `callsign`: la identidad sale del token del lado del servidor.
-  return request<LevelUpResponse>('/api/v1/level-up', {
-    method: 'POST',
-    body: JSON.stringify({ severity: 'medium', ...payload }),
-  });
-}
-
 // ══════════════════════════════════════════════════════════════════
 //  Identidad
 // ══════════════════════════════════════════════════════════════════
@@ -161,4 +150,50 @@ export function whoami(): Promise<Session> {
 
 export function logout() {
   return raw<unknown>('/api/v1/auth/logout', { method: 'POST' });
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  Bucle de verificación
+// ══════════════════════════════════════════════════════════════════
+
+/** Error de negocio con el mensaje del servidor (ej: veredicto repetido). */
+export class ApiRejection extends Error {
+  constructor(public readonly status: number, public readonly detail: string) {
+    super(detail);
+    this.name = 'ApiRejection';
+  }
+}
+
+export async function submitVerdict(
+  missionId: string,
+  payload: { call: Call; confidence: number; rationale?: string },
+): Promise<VerdictResult> {
+  try {
+    return await request<VerdictResult>(
+      `/api/v1/missions/${encodeURIComponent(missionId)}/verdict`,
+      { method: 'POST', body: JSON.stringify(payload) },
+    );
+  } catch (err) {
+    // 409 (ya emitido) y 422 (falta fundamento) traen un mensaje que el
+    // analista tiene que leer tal cual: se rescata del cuerpo del error.
+    if (err instanceof Error && !(err instanceof UnauthorizedError)) {
+      const m = /HTTP (\d{3}) en [^:]+ :: (.*)$/s.exec(err.message);
+      if (m) {
+        let detalle = m[2];
+        try {
+          detalle = JSON.parse(detalle).detail ?? detalle;
+        } catch {
+          /* el cuerpo no era JSON */
+        }
+        throw new ApiRejection(Number(m[1]), String(detalle));
+      }
+    }
+    throw err;
+  }
+}
+
+export function fetchCalibration(callsign: string): Promise<Calibration> {
+  return request<Calibration>(
+    `/api/v1/analysts/${encodeURIComponent(callsign)}/calibration`,
+  );
 }

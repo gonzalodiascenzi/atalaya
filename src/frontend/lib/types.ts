@@ -32,6 +32,45 @@ export interface Mission {
   status: string;
   object_refs: string[];
   locked: boolean;
+  // ── Bucle de verificación ──
+  independent_sources: number;
+  /** La verdad todavía no se resolvió: se apuesta a ciegas. */
+  awaiting_corroboration: boolean;
+  my_verdict: MyVerdict | null;
+}
+
+export interface MyVerdict {
+  call: 'MALICIOUS' | 'BENIGN' | 'INCONCLUSIVE';
+  confidence: number;
+  graded: boolean;
+  xp_awarded: number | null;
+  was_correct: boolean | null;
+  brier_score: number | null;
+}
+
+export interface VerdictResult {
+  mission_id: string;
+  call: 'MALICIOUS' | 'BENIGN' | 'INCONCLUSIVE';
+  confidence: number;
+  submitted_at: string;
+  graded: boolean;
+  brier_score: number | null;
+  xp_awarded: number;
+  was_correct: boolean | null;
+  ground_truth: string | null;
+  truth_source: string | null;
+  message: string;
+}
+
+export interface Calibration {
+  callsign: string;
+  verdicts_graded: number;
+  verdicts_pending: number;
+  calibration: number | null;
+  mean_brier: number | null;
+  accuracy: number | null;
+  mean_confidence: number | null;
+  overconfidence: number | null;
 }
 
 export interface FeedResponse {

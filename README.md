@@ -738,12 +738,12 @@ atalaya/
 │   └── frontend/            # Next.js 15
 │       ├── app/page.tsx     # consola: panel + feed infinito
 │       ├── tailwind.config.ts  # sistema de diseño cyberpunk
-│       ├── components/      # MissionCard · AnalystPanel · StatusBar
+│       ├── components/      # VerdictPanel · CalibrationPanel · MissionCard · AccessGate
 │       └── lib/             # tipos · cliente API · catálogo local
 ├── 📚 docs/
 │   ├── VERIFICACION.md      # ← el diseño que define el producto
 │   └── ARQUITECTURA.md
-└── 🧪 tests/                # 120 tests: identidad, progresión, persistencia, verificación, ingesta y STIX
+└── 🧪 tests/                # 130 backend + 204 frontend
 ```
 
 ---
@@ -760,6 +760,7 @@ atalaya/
 - [x] Bucle de verificación con puntuación por calibración (Brier)
 - [x] Autenticación con JWT + refresh rotativo y roles
 - [x] Conectores reales de CISA KEV, ThreatFox y OTX con corroboración entre operadores
+- [x] Interfaz del veredicto con vista previa de pagos y panel de calibración
 - [ ] 🟡 Sincronización bidireccional OpenCTI ↔ MISP
 - [ ] 🟢 Modo competitivo por equipos (CTF con multiplicador ×2)
 - [ ] 🟢 Editor de reglas YARA/Sigma con validación en vivo

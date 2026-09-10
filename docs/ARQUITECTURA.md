@@ -104,6 +104,10 @@ sequenceDiagram
 | **Sin corroboración y baja confianza ⇒ BENIGN** | Expirar todo lo no confirmado | Las misiones que enseñan a NO bloquear son tan valiosas como las otras, y sin ellas "decir siempre malicioso" gana. |
 | **Evidencia a mitad de camino ⇒ sin resolver** | Forzar un veredicto para poder puntuar | Enseñar una lección falsa es peor que no enseñar ninguna. |
 | **El worker de ingesta corre aparte de la API** | Una tarea de fondo dentro del proceso web | Si una fuente cuelga la conexión, no puede llevarse puesta la consola. |
+| **El veredicto es la única acción que puntúa** | Conservar "triar" y "enriquecer" con XP | Dar XP por clickear era exactamente el clicker con estética de SOC que el producto viene a no ser. |
+| **Vista previa de pagos calculada en el cliente** | Explicar la regla Brier con texto | Ver "+0 / −0" al 50% se entiende en un segundo; un párrafo de teoría no lo lee nadie. |
+| **La fórmula del cliente se prueba contra la de Python** | Confiar en que se mantienen iguales | Si divergen, el analista ve un número que el servidor no le otorga. 176 filas de paridad. |
+| **Contenido de la misión en JSONB** | Veinte columnas | Es contenido, no estado: nadie filtra por "objetivos", y cada conector nuevo aporta campos sin migración. |
 | **Defang obligatorio en la UI** | Mostrar el observable crudo | Un feed de amenazas con URLs clickeables es un incidente esperando a ocurrir. |
 | **Degradación autónoma del frontend** | Pantalla de error | Un entorno de entrenamiento que muere cuando muere el backend no entrena a nadie. |
 | **Perfiles en Docker Compose** | Un compose monolítico | El stack CTI completo pide ~8 GB. Nadie debería necesitar eso para tocar el frontend. |
@@ -192,8 +196,8 @@ tener más lectores que el secreto que protege.
 | Pendiente | Impacto | Prioridad |
 |---|---|---|
 | Rate limiting distribuido (hoy es por proceso) | Con N workers hay N contadores | 🟡 Media |
-| El feed recicla el catálogo indefinidamente (`has_more` siempre true) | Con 6 misiones, el scroll infinito repite las mismas en bucle visible | 🟡 Media |
 | La URL de CORS del frontend se arma a mano en Terraform | Si el proyecto usa el otro formato de URL de Cloud Run, el navegador bloquea la API | 🟡 Media |
+| Paginación del feed por desplazamiento, no por clave | Con ingesta concurrente, una misión nueva puede correr la página y repetir una | 🟢 Baja |
 | Firewall por `target_service_accounts` en lugar de `target_tags` | Una etiqueta la puede reclamar cualquier instancia | 🟡 Media |
 | Proveedor OIDC además de contraseñas locales | Hoy cada quien mantiene una contraseña más | 🟡 Media |
 | Doble token anti-CSRF además de SameSite | SameSite=strict alcanza hoy, pero es una sola capa | 🟢 Baja |

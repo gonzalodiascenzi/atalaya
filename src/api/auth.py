@@ -76,6 +76,16 @@ class AuthError(Exception):
     """Credenciales, token o permisos inválidos."""
 
 
+class WeakPasswordError(AuthError):
+    """La contraseña no cumple la política.
+
+    Subclase aparte porque se responde distinto: un 422 (lo que mandaste no
+    es válido, corregilo) y no un 409 (choca con algo que ya existe). El
+    código de estado es parte del contrato: un cliente que reintenta ante
+    409 no debería reintentar ante una contraseña que nunca va a pasar.
+    """
+
+
 # ══════════════════════════════════════════════════════════════════════
 #  Contraseñas
 # ══════════════════════════════════════════════════════════════════════
@@ -84,13 +94,13 @@ class AuthError(Exception):
 def validate_password(password: str, callsign: str) -> None:
     """Reglas mínimas. Lanza AuthError con un motivo accionable."""
     if len(password) < MIN_PASSWORD_LENGTH:
-        raise AuthError(
+        raise WeakPasswordError(
             f"La contraseña necesita al menos {MIN_PASSWORD_LENGTH} caracteres. "
             "Una frase larga es más fuerte y más fácil de recordar que un "
             "revoltijo corto."
         )
     if callsign.lower() in password.lower():
-        raise AuthError("La contraseña no puede contener tu callsign.")
+        raise WeakPasswordError("La contraseña no puede contener tu callsign.")
     if password.lower() in {
         "contrasena123",
         "atalaya12345",
@@ -98,7 +108,9 @@ def validate_password(password: str, callsign: str) -> None:
         "123456789012",
         "qwertyuiop12",
     }:
-        raise AuthError("Esa contraseña está en las listas públicas de filtraciones.")
+        raise WeakPasswordError(
+            "Esa contraseña está en las listas públicas de filtraciones."
+        )
 
 
 def hash_password(password: str) -> str:

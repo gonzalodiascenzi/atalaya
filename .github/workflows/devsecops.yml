@@ -325,6 +325,13 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Incluye la paridad de la vista previa de pagos con el motor de
+      # Python: 176 filas generadas por scoring.py. Si una fórmula cambia de
+      # un lado y no del otro, el analista vería números que el servidor no
+      # le va a otorgar.
+      - name: Tests (Vitest)
+        run: npm test
+
       - name: Build de producción
         run: npm run build
         env:

@@ -41,7 +41,7 @@ export default function AnalystPanel({ analyst, ranks, online }: Props) {
   const currentLevel = analyst.level;
 
   return (
-    <aside className="flex w-full flex-col gap-3 lg:w-[310px] lg:shrink-0">
+    <aside className="flex w-full flex-col gap-3">
       {/* ── Identidad ─────────────────────────────────────────── */}
       <section className={`panel clip-corner ${style.border}`}>
         <div className="panel-header">

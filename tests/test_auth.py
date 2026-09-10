@@ -345,3 +345,25 @@ def test_leer_un_analista_inexistente_no_lo_crea(client):
         client.get("/api/v1/analysts/fantasma-que-no-existe/calibration").status_code
         == 404
     )
+
+
+def test_contrasena_debil_es_422_y_callsign_tomado_es_409(client):
+    """El código de estado es parte del contrato.
+
+    Un 409 dice "choca con algo existente"; un 422, "lo que mandaste no es
+    válido". Mezclarlos confunde a cualquier cliente que decida qué hacer
+    según el código.
+    """
+    debil = client.post(
+        "/api/v1/auth/register",
+        json={"callsign": "test-auth-politica", "password": "test-auth-politica-larga"},
+    )
+    client.cookies.clear()
+    assert debil.status_code == 422
+    assert "callsign" in debil.json()["detail"]
+
+    ok = {"callsign": "test-auth-dup", "password": CLAVE}
+    assert client.post("/api/v1/auth/register", json=ok).status_code == 201
+    client.cookies.clear()
+    assert client.post("/api/v1/auth/register", json=ok).status_code == 409
+    client.cookies.clear()

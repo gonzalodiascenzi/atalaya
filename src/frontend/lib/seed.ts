@@ -57,7 +57,7 @@ export const RANK_LEVEL: Record<RankId, number> = {
 const iso = (minutesAgo: number) =>
   new Date(Date.now() - minutesAgo * 60_000).toISOString();
 
-export const SEED_MISSIONS: Mission[] = [
+const SEED_BASE: Array<Omit<Mission, 'independent_sources' | 'awaiting_corroboration' | 'my_verdict'>> = [
   {
     mission_id: 'MSN-AK1RA001',
     title: 'Cifrado masivo en curso — familia Akira',
@@ -228,33 +228,13 @@ export const SEED_MISSIONS: Mission[] = [
   },
 ];
 
-/** Tabla de XP local: espeja `XP_TABLE` del backend para el modo autónomo. */
-export const SEED_XP_TABLE: Record<string, number> = {
-  mission_triage: 10,
-  ioc_enriched: 25,
-  ioc_verified: 60,
-  correlation_confirmed: 120,
-  campaign_attributed: 300,
-  yara_rule_accepted: 200,
-  peer_review: 40,
-  first_blood: 150,
-  false_positive_published: -75,
-  mission_expired: -15,
-};
-
-export const SEED_SEVERITY_MULTIPLIER: Record<string, number> = {
-  low: 1.0,
-  medium: 1.25,
-  high: 1.6,
-  critical: 2.0,
-};
-
-/** Devuelve el rango correspondiente a una cantidad de XP. */
-export function rankForXP(xp: number): RankInfo {
-  let earned = SEED_RANKS[0];
-  for (const spec of SEED_RANKS) {
-    if (xp >= spec.xp_required) earned = spec;
-    else break;
-  }
-  return earned;
-}
+/**
+ * Catálogo local con los campos del bucle de verificación. Sin servidor no se
+ * pueden emitir veredictos, así que estas misiones son sólo de lectura.
+ */
+export const SEED_MISSIONS: Mission[] = SEED_BASE.map((m) => ({
+  ...m,
+  independent_sources: 1,
+  awaiting_corroboration: false,
+  my_verdict: null,
+}));

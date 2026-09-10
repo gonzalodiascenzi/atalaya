@@ -9,13 +9,15 @@
  */
 
 import { useState } from 'react';
-import { SEVERITY_STYLE, type Mission, type XPEventId } from '@/lib/types';
+import VerdictPanel from '@/components/VerdictPanel';
+import { SEVERITY_STYLE, type Mission, type VerdictResult } from '@/lib/types';
 
 interface Props {
   mission: Mission;
   index: number;
-  onAction: (mission: Mission, event: XPEventId) => void;
-  busy: boolean;
+  canOperate: boolean;
+  onVerdict: (mission: Mission, result: VerdictResult) => void;
+  onSessionExpired: () => void;
 }
 
 const TACTIC_LABEL: Record<string, string> = {
@@ -41,7 +43,13 @@ function minutesAgo(iso: string): string {
   return `HACE ${Math.floor(mins / 60)}H`;
 }
 
-export default function MissionCard({ mission, index, onAction, busy }: Props) {
+export default function MissionCard({
+  mission,
+  index,
+  canOperate,
+  onVerdict,
+  onSessionExpired,
+}: Props) {
   const [open, setOpen] = useState(index < 2);
   const [done, setDone] = useState<Set<number>>(new Set());
   const [copied, setCopied] = useState(false);
@@ -66,8 +74,6 @@ export default function MissionCard({ mission, index, onAction, busy }: Props) {
       setCopied(false);
     }
   };
-
-  const allDone = done.size === mission.objectives.length;
 
   return (
     <article
@@ -142,6 +148,19 @@ export default function MissionCard({ mission, index, onAction, busy }: Props) {
             {'▮'.repeat(mission.difficulty)}
             {'▯'.repeat(5 - mission.difficulty)}
           </span>
+          {mission.awaiting_corroboration ? (
+            <span
+              className="chip border-neon-amber/40 bg-neon-amber/5 text-neon-amber"
+              title="Operadores independientes que lo reportaron. Con 3 se da por corroborado."
+            >
+              ◷ {mission.independent_sources}/3 fuentes
+            </span>
+          ) : (
+            <span className="chip border-neon-green/30 text-neon-green/80">verdad conocida</span>
+          )}
+          {mission.my_verdict && (
+            <span className="chip border-neon-cyan/40 text-neon-cyan">✓ operada</span>
+          )}
         </div>
 
         {open && (
@@ -175,7 +194,8 @@ export default function MissionCard({ mission, index, onAction, busy }: Props) {
             {/* Objetivos */}
             <div>
               <p className="mb-1.5 text-2xs uppercase tracking-[0.18em] text-phosphor-faint">
-                Objetivos de la operación · {done.size}/{mission.objectives.length}
+                Guía de análisis · {done.size}/{mission.objectives.length}
+                <span className="normal-case tracking-normal"> — no puntúa: puntúa tu veredicto</span>
               </p>
               <ul className="space-y-1">
                 {mission.objectives.map((obj, i) => (
@@ -207,47 +227,13 @@ export default function MissionCard({ mission, index, onAction, busy }: Props) {
               </ul>
             </div>
 
-            {/* Acciones */}
-            <div className="flex flex-wrap items-center gap-2 border-t border-void-600/60 pt-3">
-              <button
-                type="button"
-                disabled={busy || mission.locked}
-                onClick={() => onAction(mission, 'mission_triage')}
-                className="btn-console border-neon-green/45 text-neon-green hover:bg-neon-green/10 hover:shadow-glow-green"
-              >
-                ▸ Triar
-              </button>
-              <button
-                type="button"
-                disabled={busy || mission.locked}
-                onClick={() => onAction(mission, 'ioc_enriched')}
-                className="btn-console border-neon-cyan/45 text-neon-cyan hover:bg-neon-cyan/10 hover:shadow-glow-cyan"
-              >
-                ▸ Enriquecer
-              </button>
-              <button
-                type="button"
-                disabled={busy || mission.locked || !allDone}
-                title={
-                  allDone
-                    ? 'Verificar el indicador'
-                    : 'Completá los objetivos antes de emitir veredicto'
-                }
-                onClick={() => onAction(mission, 'ioc_verified')}
-                className="btn-console border-neon-magenta/45 text-neon-magenta hover:bg-neon-magenta/10 hover:shadow-glow-magenta"
-              >
-                ▸ Verificar
-              </button>
-              <button
-                type="button"
-                disabled={busy || mission.locked}
-                onClick={() => onAction(mission, 'false_positive_published')}
-                className="btn-console ml-auto border-severity-critical/40 text-severity-critical/80 hover:bg-severity-critical/10"
-                title="Marcar como falso positivo. Si te equivocás, resta XP."
-              >
-                ▸ Falso positivo
-              </button>
-            </div>
+            {/* Veredicto: la única acción que puntúa */}
+            <VerdictPanel
+              mission={mission}
+              canOperate={canOperate && !mission.locked}
+              onSubmitted={onVerdict}
+              onSessionExpired={onSessionExpired}
+            />
 
             <p className="text-2xs text-phosphor-faint">
               Fuente: {mission.source} · refs STIX: {mission.object_refs.length || '—'}

@@ -1,0 +1,1237 @@
+{
+ "_generado_por": "src/api/scoring.py",
+ "filas": [
+  {
+   "base": 40,
+   "confidence": 50,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 0
+  },
+  {
+   "base": 40,
+   "confidence": 50,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": 0
+  },
+  {
+   "base": 40,
+   "confidence": 50,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": 0
+  },
+  {
+   "base": 40,
+   "confidence": 50,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 0
+  },
+  {
+   "base": 40,
+   "confidence": 55,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 8
+  },
+  {
+   "base": 40,
+   "confidence": 55,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -8
+  },
+  {
+   "base": 40,
+   "confidence": 55,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -8
+  },
+  {
+   "base": 40,
+   "confidence": 55,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 8
+  },
+  {
+   "base": 40,
+   "confidence": 60,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 14
+  },
+  {
+   "base": 40,
+   "confidence": 60,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -18
+  },
+  {
+   "base": 40,
+   "confidence": 60,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -18
+  },
+  {
+   "base": 40,
+   "confidence": 60,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 14
+  },
+  {
+   "base": 40,
+   "confidence": 65,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 20
+  },
+  {
+   "base": 40,
+   "confidence": 65,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -28
+  },
+  {
+   "base": 40,
+   "confidence": 65,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -28
+  },
+  {
+   "base": 40,
+   "confidence": 65,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 20
+  },
+  {
+   "base": 40,
+   "confidence": 70,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 26
+  },
+  {
+   "base": 40,
+   "confidence": 70,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -38
+  },
+  {
+   "base": 40,
+   "confidence": 70,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -38
+  },
+  {
+   "base": 40,
+   "confidence": 70,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 26
+  },
+  {
+   "base": 40,
+   "confidence": 75,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 30
+  },
+  {
+   "base": 40,
+   "confidence": 75,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -50
+  },
+  {
+   "base": 40,
+   "confidence": 75,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -50
+  },
+  {
+   "base": 40,
+   "confidence": 75,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 30
+  },
+  {
+   "base": 40,
+   "confidence": 80,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 34
+  },
+  {
+   "base": 40,
+   "confidence": 80,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -62
+  },
+  {
+   "base": 40,
+   "confidence": 80,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -62
+  },
+  {
+   "base": 40,
+   "confidence": 80,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 34
+  },
+  {
+   "base": 40,
+   "confidence": 85,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 36
+  },
+  {
+   "base": 40,
+   "confidence": 85,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -76
+  },
+  {
+   "base": 40,
+   "confidence": 85,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -76
+  },
+  {
+   "base": 40,
+   "confidence": 85,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 36
+  },
+  {
+   "base": 40,
+   "confidence": 90,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 38
+  },
+  {
+   "base": 40,
+   "confidence": 90,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -90
+  },
+  {
+   "base": 40,
+   "confidence": 90,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -90
+  },
+  {
+   "base": 40,
+   "confidence": 90,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 38
+  },
+  {
+   "base": 40,
+   "confidence": 95,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 40
+  },
+  {
+   "base": 40,
+   "confidence": 95,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -104
+  },
+  {
+   "base": 40,
+   "confidence": 95,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -104
+  },
+  {
+   "base": 40,
+   "confidence": 95,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 40
+  },
+  {
+   "base": 40,
+   "confidence": 100,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 40
+  },
+  {
+   "base": 40,
+   "confidence": 100,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -120
+  },
+  {
+   "base": 40,
+   "confidence": 100,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -120
+  },
+  {
+   "base": 40,
+   "confidence": 100,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 40
+  },
+  {
+   "base": 80,
+   "confidence": 50,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 0
+  },
+  {
+   "base": 80,
+   "confidence": 50,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": 0
+  },
+  {
+   "base": 80,
+   "confidence": 50,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": 0
+  },
+  {
+   "base": 80,
+   "confidence": 50,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 0
+  },
+  {
+   "base": 80,
+   "confidence": 55,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 15
+  },
+  {
+   "base": 80,
+   "confidence": 55,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -17
+  },
+  {
+   "base": 80,
+   "confidence": 55,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -17
+  },
+  {
+   "base": 80,
+   "confidence": 55,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 15
+  },
+  {
+   "base": 80,
+   "confidence": 60,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 29
+  },
+  {
+   "base": 80,
+   "confidence": 60,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -35
+  },
+  {
+   "base": 80,
+   "confidence": 60,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -35
+  },
+  {
+   "base": 80,
+   "confidence": 60,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 29
+  },
+  {
+   "base": 80,
+   "confidence": 65,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 41
+  },
+  {
+   "base": 80,
+   "confidence": 65,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -55
+  },
+  {
+   "base": 80,
+   "confidence": 65,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -55
+  },
+  {
+   "base": 80,
+   "confidence": 65,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 41
+  },
+  {
+   "base": 80,
+   "confidence": 70,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 51
+  },
+  {
+   "base": 80,
+   "confidence": 70,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -77
+  },
+  {
+   "base": 80,
+   "confidence": 70,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -77
+  },
+  {
+   "base": 80,
+   "confidence": 70,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 51
+  },
+  {
+   "base": 80,
+   "confidence": 75,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 60
+  },
+  {
+   "base": 80,
+   "confidence": 75,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -100
+  },
+  {
+   "base": 80,
+   "confidence": 75,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -100
+  },
+  {
+   "base": 80,
+   "confidence": 75,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 60
+  },
+  {
+   "base": 80,
+   "confidence": 80,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 67
+  },
+  {
+   "base": 80,
+   "confidence": 80,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -125
+  },
+  {
+   "base": 80,
+   "confidence": 80,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -125
+  },
+  {
+   "base": 80,
+   "confidence": 80,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 67
+  },
+  {
+   "base": 80,
+   "confidence": 85,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 73
+  },
+  {
+   "base": 80,
+   "confidence": 85,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -151
+  },
+  {
+   "base": 80,
+   "confidence": 85,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -151
+  },
+  {
+   "base": 80,
+   "confidence": 85,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 73
+  },
+  {
+   "base": 80,
+   "confidence": 90,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 77
+  },
+  {
+   "base": 80,
+   "confidence": 90,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -179
+  },
+  {
+   "base": 80,
+   "confidence": 90,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -179
+  },
+  {
+   "base": 80,
+   "confidence": 90,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 77
+  },
+  {
+   "base": 80,
+   "confidence": 95,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 79
+  },
+  {
+   "base": 80,
+   "confidence": 95,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -209
+  },
+  {
+   "base": 80,
+   "confidence": 95,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -209
+  },
+  {
+   "base": 80,
+   "confidence": 95,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 79
+  },
+  {
+   "base": 80,
+   "confidence": 100,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 80
+  },
+  {
+   "base": 80,
+   "confidence": 100,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -240
+  },
+  {
+   "base": 80,
+   "confidence": 100,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -240
+  },
+  {
+   "base": 80,
+   "confidence": 100,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 80
+  },
+  {
+   "base": 160,
+   "confidence": 50,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 0
+  },
+  {
+   "base": 160,
+   "confidence": 50,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": 0
+  },
+  {
+   "base": 160,
+   "confidence": 50,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": 0
+  },
+  {
+   "base": 160,
+   "confidence": 50,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 0
+  },
+  {
+   "base": 160,
+   "confidence": 55,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 30
+  },
+  {
+   "base": 160,
+   "confidence": 55,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -34
+  },
+  {
+   "base": 160,
+   "confidence": 55,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -34
+  },
+  {
+   "base": 160,
+   "confidence": 55,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 30
+  },
+  {
+   "base": 160,
+   "confidence": 60,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 58
+  },
+  {
+   "base": 160,
+   "confidence": 60,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -70
+  },
+  {
+   "base": 160,
+   "confidence": 60,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -70
+  },
+  {
+   "base": 160,
+   "confidence": 60,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 58
+  },
+  {
+   "base": 160,
+   "confidence": 65,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 82
+  },
+  {
+   "base": 160,
+   "confidence": 65,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -110
+  },
+  {
+   "base": 160,
+   "confidence": 65,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -110
+  },
+  {
+   "base": 160,
+   "confidence": 65,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 82
+  },
+  {
+   "base": 160,
+   "confidence": 70,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 102
+  },
+  {
+   "base": 160,
+   "confidence": 70,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -154
+  },
+  {
+   "base": 160,
+   "confidence": 70,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -154
+  },
+  {
+   "base": 160,
+   "confidence": 70,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 102
+  },
+  {
+   "base": 160,
+   "confidence": 75,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 120
+  },
+  {
+   "base": 160,
+   "confidence": 75,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -200
+  },
+  {
+   "base": 160,
+   "confidence": 75,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -200
+  },
+  {
+   "base": 160,
+   "confidence": 75,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 120
+  },
+  {
+   "base": 160,
+   "confidence": 80,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 134
+  },
+  {
+   "base": 160,
+   "confidence": 80,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -250
+  },
+  {
+   "base": 160,
+   "confidence": 80,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -250
+  },
+  {
+   "base": 160,
+   "confidence": 80,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 134
+  },
+  {
+   "base": 160,
+   "confidence": 85,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 146
+  },
+  {
+   "base": 160,
+   "confidence": 85,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -302
+  },
+  {
+   "base": 160,
+   "confidence": 85,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -302
+  },
+  {
+   "base": 160,
+   "confidence": 85,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 146
+  },
+  {
+   "base": 160,
+   "confidence": 90,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 154
+  },
+  {
+   "base": 160,
+   "confidence": 90,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -358
+  },
+  {
+   "base": 160,
+   "confidence": 90,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -358
+  },
+  {
+   "base": 160,
+   "confidence": 90,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 154
+  },
+  {
+   "base": 160,
+   "confidence": 95,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 158
+  },
+  {
+   "base": 160,
+   "confidence": 95,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -418
+  },
+  {
+   "base": 160,
+   "confidence": 95,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -418
+  },
+  {
+   "base": 160,
+   "confidence": 95,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 158
+  },
+  {
+   "base": 160,
+   "confidence": 100,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 160
+  },
+  {
+   "base": 160,
+   "confidence": 100,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -480
+  },
+  {
+   "base": 160,
+   "confidence": 100,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -480
+  },
+  {
+   "base": 160,
+   "confidence": 100,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 160
+  },
+  {
+   "base": 300,
+   "confidence": 50,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 0
+  },
+  {
+   "base": 300,
+   "confidence": 50,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": 0
+  },
+  {
+   "base": 300,
+   "confidence": 50,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": 0
+  },
+  {
+   "base": 300,
+   "confidence": 50,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 0
+  },
+  {
+   "base": 300,
+   "confidence": 55,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 57
+  },
+  {
+   "base": 300,
+   "confidence": 55,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -63
+  },
+  {
+   "base": 300,
+   "confidence": 55,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -63
+  },
+  {
+   "base": 300,
+   "confidence": 55,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 57
+  },
+  {
+   "base": 300,
+   "confidence": 60,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 108
+  },
+  {
+   "base": 300,
+   "confidence": 60,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -132
+  },
+  {
+   "base": 300,
+   "confidence": 60,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -132
+  },
+  {
+   "base": 300,
+   "confidence": 60,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 108
+  },
+  {
+   "base": 300,
+   "confidence": 65,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 153
+  },
+  {
+   "base": 300,
+   "confidence": 65,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -207
+  },
+  {
+   "base": 300,
+   "confidence": 65,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -207
+  },
+  {
+   "base": 300,
+   "confidence": 65,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 153
+  },
+  {
+   "base": 300,
+   "confidence": 70,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 192
+  },
+  {
+   "base": 300,
+   "confidence": 70,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -288
+  },
+  {
+   "base": 300,
+   "confidence": 70,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -288
+  },
+  {
+   "base": 300,
+   "confidence": 70,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 192
+  },
+  {
+   "base": 300,
+   "confidence": 75,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 225
+  },
+  {
+   "base": 300,
+   "confidence": 75,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -375
+  },
+  {
+   "base": 300,
+   "confidence": 75,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -375
+  },
+  {
+   "base": 300,
+   "confidence": 75,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 225
+  },
+  {
+   "base": 300,
+   "confidence": 80,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 252
+  },
+  {
+   "base": 300,
+   "confidence": 80,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -468
+  },
+  {
+   "base": 300,
+   "confidence": 80,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -468
+  },
+  {
+   "base": 300,
+   "confidence": 80,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 252
+  },
+  {
+   "base": 300,
+   "confidence": 85,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 273
+  },
+  {
+   "base": 300,
+   "confidence": 85,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -567
+  },
+  {
+   "base": 300,
+   "confidence": 85,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -567
+  },
+  {
+   "base": 300,
+   "confidence": 85,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 273
+  },
+  {
+   "base": 300,
+   "confidence": 90,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 288
+  },
+  {
+   "base": 300,
+   "confidence": 90,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -672
+  },
+  {
+   "base": 300,
+   "confidence": 90,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -672
+  },
+  {
+   "base": 300,
+   "confidence": 90,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 288
+  },
+  {
+   "base": 300,
+   "confidence": 95,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 297
+  },
+  {
+   "base": 300,
+   "confidence": 95,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -783
+  },
+  {
+   "base": 300,
+   "confidence": 95,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -783
+  },
+  {
+   "base": 300,
+   "confidence": 95,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 297
+  },
+  {
+   "base": 300,
+   "confidence": 100,
+   "call": "MALICIOUS",
+   "truth": "MALICIOUS",
+   "xp": 300
+  },
+  {
+   "base": 300,
+   "confidence": 100,
+   "call": "MALICIOUS",
+   "truth": "BENIGN",
+   "xp": -900
+  },
+  {
+   "base": 300,
+   "confidence": 100,
+   "call": "BENIGN",
+   "truth": "MALICIOUS",
+   "xp": -900
+  },
+  {
+   "base": 300,
+   "confidence": 100,
+   "call": "BENIGN",
+   "truth": "BENIGN",
+   "xp": 300
+  }
+ ]
+}
