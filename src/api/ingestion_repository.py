@@ -21,6 +21,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import IndicatorSighting, MissionRecord
+from repository import mission_payload
 from scoring import (
     CORROBORATION_THRESHOLD,
     GroundTruth,
@@ -73,12 +74,16 @@ class IngestionRepository:
                 kev_listed=mision["kev_listed"],
                 resolves_at=(utcnow() + _ventana() if ambigua else None),
                 resolved_at=None if ambigua else utcnow(),
+                payload=mission_payload(mision),
             )
             self._session.add(existente)
             await self._session.flush()
             estado = "creada"
         else:
             estado = "sin-cambios"
+            # El contenido se refresca en cada corrida (el briefing menciona
+            # cuántas fuentes lo vieron, y eso cambia). La verdad, jamás.
+            existente.payload = mission_payload(mision)
 
         for a in avistamientos:
             await self._upsert_sighting(existente.mission_id, mision, a)

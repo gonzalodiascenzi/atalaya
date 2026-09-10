@@ -64,6 +64,10 @@ db-revision: ## Genera una migración nueva. Uso: make db-revision M="descripcio
 db-history: ## Historial de migraciones y revisión actual
 	cd src/api && alembic history --verbose && alembic current
 
+.PHONY: db-check
+db-check: ## Verifica que el esquema de la base coincida con models.py
+	cd src/api && scripts/check_schema_drift.sh
+
 .PHONY: db-sql
 db-sql: ## Imprime el SQL de las migraciones sin aplicarlo (revisión previa)
 	cd src/api && alembic upgrade head --sql

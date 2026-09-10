@@ -54,7 +54,7 @@ from gamification import (
     XPEvent,
     build_ladder,
 )
-from repository import AnalystRepository, VerdictRepository
+from repository import AnalystRepository, FeedRepository, VerdictRepository
 from scoring import Call, GroundTruth, TruthSource
 from schemas import (
     AnalystState,
@@ -582,6 +582,43 @@ async def whoami(
 # ══════════════════════════════════════════════════════════════════════
 #  Feed de Misiones
 # ══════════════════════════════════════════════════════════════════════
+#: Campos de MissionSummary que salen del contenido guardado de la misión.
+_CAMPOS_RESUMEN = set(MissionSummary.model_fields) - {
+    "locked",
+    "independent_sources",
+    "awaiting_corroboration",
+    "my_verdict",
+}
+
+
+def _resumen(fila, viewer_level: int, veredicto=None) -> MissionSummary:
+    """Arma la tarjeta a partir de la fila y del contenido guardado."""
+    contenido = {k: v for k, v in (fila.payload or {}).items() if k in _CAMPOS_RESUMEN}
+    requerido = Rank(contenido.get("required_rank", "NOVATO"))
+    return MissionSummary(
+        **contenido,
+        # Se marca, no se oculta: ver lo que todavía no podés tocar es la
+        # mitad del incentivo para subir de rango.
+        locked=engine.spec_for(requerido).level > viewer_level,
+        independent_sources=fila.independent_sources,
+        awaiting_corroboration=(
+            fila.ground_truth == "UNKNOWN" and fila.resolves_at is not None
+        ),
+        my_verdict=(
+            {
+                "call": veredicto.call,
+                "confidence": veredicto.confidence,
+                "graded": veredicto.graded_at is not None,
+                "xp_awarded": veredicto.xp_awarded,
+                "was_correct": veredicto.was_correct,
+                "brier_score": veredicto.brier_score,
+            }
+            if veredicto is not None
+            else None
+        ),
+    )
+
+
 @app.get("/api/v1/feed", response_model=FeedResponse, tags=["feed"])
 async def get_feed(
     cursor: str | None = Query(
@@ -593,9 +630,14 @@ async def get_feed(
         description="Filtra por severidad: low|medium|high|critical.",
     ),
     repo: AnalystRepository = Depends(get_repo),
+    session: AsyncSession = Depends(get_session),
     viewer: Analyst | None = Depends(optional_analyst),
 ) -> FeedResponse:
     """Página del Feed de Misiones, lista para scroll infinito.
+
+    Lee de la base: lo que traen los conectores reales llega acá. El feed
+    **termina** cuando se agotan las misiones — antes reciclaba el mismo
+    catálogo en bucle, y con ocho misiones eso se veía a los veinte segundos.
 
     Devuelve dos vistas de lo mismo:
 
@@ -606,51 +648,39 @@ async def get_feed(
         limit or settings.api_feed_page_size, settings.api_feed_max_page_size
     )
 
-    pool = _MISSIONS
-    if severity:
-        sev = severity.lower()
-        if sev not in {"low", "medium", "high", "critical"}:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="severity debe ser low, medium, high o critical.",
-            )
-        pool = [m for m in pool if m["severity"] == sev]
+    sev = severity.lower() if severity else None
+    if sev and sev not in {"low", "medium", "high", "critical"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="severity debe ser low, medium, high o critical.",
+        )
 
-    # El feed es un flujo continuo: cuando se agota el catálogo, se cicla.
-    # Con la ingesta real conectada esto se reemplaza por la query a OpenCTI.
+    feed = FeedRepository(session)
     offset = decode_cursor(cursor)
-    if not pool:
-        window: list[dict] = []
-    else:
-        window = [pool[(offset + i) % len(pool)] for i in range(page_size)]
+    filas, total = await feed.page(offset, page_size, sev)
 
     # El feed es público: sin sesión se ve todo como Novato. Con sesión, las
     # misiones fuera de rango se marcan como bloqueadas — el rango sale del
     # token, no de un parámetro que cualquiera puede inventar.
     viewer_rank = Rank.NOVATO
+    veredictos: dict = {}
     if viewer is not None:
         viewer_rank = await repo.current_rank(viewer.callsign)
+        veredictos = await feed.verdicts_of(viewer.id, [f.mission_id for f in filas])
     viewer_level = engine.spec_for(viewer_rank).level
 
-    summaries: list[MissionSummary] = []
-    for mission in window:
-        required = Rank(mission["required_rank"])
-        summaries.append(
-            MissionSummary(
-                **{k: v for k, v in mission.items() if k != "objects"},
-                # Se marca, no se oculta: ver lo que todavía no podés tocar
-                # es la mitad del incentivo para subir de rango.
-                locked=engine.spec_for(required).level > viewer_level,
-            )
-        )
-
-    next_offset = offset + page_size
+    siguiente = offset + len(filas)
+    hay_mas = siguiente < total
     return FeedResponse(
-        missions=summaries,
-        bundle=as_bundle(window),
-        next_cursor=encode_cursor(next_offset) if pool else None,
-        has_more=bool(pool),
-        total=len(pool),
+        missions=[
+            _resumen(f, viewer_level, veredictos.get(f.mission_id)) for f in filas
+        ],
+        bundle=as_bundle(
+            [{"objects": (f.payload or {}).get("objects", [])} for f in filas]
+        ),
+        next_cursor=encode_cursor(siguiente) if hay_mas else None,
+        has_more=hay_mas,
+        total=total,
         generated_at=now_iso(),
         viewer_rank=viewer_rank.value,
     )
@@ -662,29 +692,31 @@ async def get_feed(
     tags=["feed"],
     responses={404: {"model": ErrorResponse}},
 )
-async def get_mission(mission_id: str) -> MissionSummary:
+async def get_mission(
+    mission_id: str, session: AsyncSession = Depends(get_session)
+) -> MissionSummary:
     """Detalle de una misión puntual."""
-    for mission in _MISSIONS:
-        if mission["mission_id"] == mission_id.upper():
-            return MissionSummary(
-                **{k: v for k, v in mission.items() if k != "objects"}
-            )
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"Misión {mission_id} no encontrada en el catálogo.",
-    )
+    fila = await FeedRepository(session).get(mission_id)
+    if fila is None or fila.payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Misión {mission_id} no encontrada.",
+        )
+    return _resumen(fila, viewer_level=4)
 
 
 @app.get("/api/v1/feed/{mission_id}/stix", tags=["feed"])
-async def get_mission_stix(mission_id: str) -> dict:
+async def get_mission_stix(
+    mission_id: str, session: AsyncSession = Depends(get_session)
+) -> dict:
     """Bundle STIX 2.1 crudo de una misión. Importable tal cual en OpenCTI."""
-    for mission in _MISSIONS:
-        if mission["mission_id"] == mission_id.upper():
-            return as_bundle([mission])
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"Misión {mission_id} no encontrada.",
-    )
+    fila = await FeedRepository(session).get(mission_id)
+    if fila is None or fila.payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Misión {mission_id} no encontrada.",
+        )
+    return as_bundle([{"objects": fila.payload.get("objects", [])}])
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -935,21 +967,17 @@ async def get_calibration(
 
 
 @app.get("/api/v1/stats", tags=["feed"])
-async def stats(repo: AnalystRepository = Depends(get_repo)) -> dict:
+async def stats(
+    repo: AnalystRepository = Depends(get_repo),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
     """Métricas del tablero: los contadores de la esquina superior del SOC."""
-    by_severity: dict[str, int] = {}
-    by_tactic: dict[str, int] = {}
-    for mission in _MISSIONS:
-        by_severity[mission["severity"]] = by_severity.get(mission["severity"], 0) + 1
-        by_tactic[mission["attack_tactic"]] = (
-            by_tactic.get(mission["attack_tactic"], 0) + 1
-        )
+    conteo = await FeedRepository(session).counts()
     return {
-        "missions_total": len(_MISSIONS),
-        "by_severity": by_severity,
-        "by_tactic": by_tactic,
+        "missions_total": conteo["total"],
+        "by_severity": conteo["by_severity"],
         "analysts_active": await repo.count_analysts(),
-        "sources": sorted({m["source"] for m in _MISSIONS}),
+        "sources": conteo["sources"],
         "server_time": datetime.now(timezone.utc).isoformat(),
     }
 

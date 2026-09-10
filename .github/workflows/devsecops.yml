@@ -252,19 +252,11 @@ jobs:
           alembic upgrade head
 
       # Guardia contra el olvido más común: cambiar un modelo y no generar la
-      # migración. Si autogenerate detecta diferencias, el esquema desplegado
-      # no coincide con el código.
+      # migración. La versión anterior de este paso NUNCA podía fallar —
+      # buscaba el archivo por un nombre que Alembic no usa— y reportaba
+      # verde siempre. El script falla cerrado y está probado rompiéndolo.
       - name: El esquema coincide con los modelos
-        run: |
-          alembic revision --autogenerate -m "verificacion-ci" --rev-id ci-check
-          ARCHIVO="migrations/versions/"*ci-check*.py
-          if grep -qE "op\.(create_table|drop_table|add_column|drop_column|alter_column|create_index|drop_index)" $ARCHIVO; then
-            echo "::error::Los modelos cambiaron sin migración. Corré: make db-revision M=\"descripcion\""
-            cat $ARCHIVO
-            exit 1
-          fi
-          echo "✓ El esquema de la base coincide con models.py"
-          rm -f $ARCHIVO
+        run: scripts/check_schema_drift.sh
 
   # ════════════════════════════════════════════════════════════════════
   stix-contract:

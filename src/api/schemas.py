@@ -50,6 +50,19 @@ class MissionSummary(BaseModel):
         description="True si el rango del analista no alcanza para operarla.",
     )
 
+    # ── Estado del bucle de verificación ─────────────────────────────
+    # Lo que la tarjeta necesita para saber qué mostrar: si todavía se puede
+    # apostar, si la verdad ya se conoce, y si vos ya emitiste veredicto.
+    independent_sources: int = 1
+    awaiting_corroboration: bool = Field(
+        default=False,
+        description="La verdad todavía no se resolvió: se apuesta a ciegas.",
+    )
+    my_verdict: dict[str, Any] | None = Field(
+        default=None,
+        description="Tu veredicto sobre esta misión, si ya lo emitiste.",
+    )
+
 
 class FeedResponse(BaseModel):
     """Página del feed de misiones + el bundle STIX que la respalda."""

@@ -41,6 +41,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -201,6 +202,17 @@ class MissionRecord(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # ── Contenido de la misión ───────────────────────────────────────
+    # Todo lo que el feed muestra: briefing, objetivos, observable
+    # neutralizado, bundle STIX. Va en JSONB y no en veinte columnas porque
+    # es contenido, no estado: nadie filtra por "objetivos", y cada conector
+    # nuevo puede aportar campos sin una migración.
+    #
+    # Antes esto no existía, y el feed servía SIEMPRE las ocho misiones del
+    # catálogo en memoria: todo lo que ingerían los conectores reales era
+    # invisible para los analistas.
+    payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
     verdicts: Mapped[list["Verdict"]] = relationship(
         back_populates="mission", cascade="all, delete-orphan", passive_deletes=True
     )
@@ -210,6 +222,8 @@ class MissionRecord(Base):
             "ground_truth IN ('MALICIOUS','BENIGN','UNKNOWN')",
             name="ck_ground_truth_valido",
         ),
+        # El feed ordena por esto en cada página.
+        Index("ix_missions_recientes", text("first_reported_at DESC"), "mission_id"),
     )
 
 

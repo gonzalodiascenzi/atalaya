@@ -354,12 +354,19 @@ class VerdictRepository:
         reescribirle la verdad de referencia sería cambiar las reglas después
         de que la gente apostó.
         """
-        existentes = set(
-            (await self._session.scalars(select(MissionRecord.mission_id))).all()
-        )
+        existentes = {
+            r.mission_id: r
+            for r in (await self._session.scalars(select(MissionRecord))).all()
+        }
         nuevas = 0
         for m in missions:
             if m["mission_id"] in existentes:
+                # Relleno del contenido en misiones sembradas antes de que
+                # existiera la columna. Sólo el contenido: la verdad de
+                # referencia de una misión ya jugada no se toca nunca.
+                fila = existentes[m["mission_id"]]
+                if fila.payload is None:
+                    fila.payload = mission_payload(m)
                 continue
             resuelta = m.get("ground_truth", "UNKNOWN") != "UNKNOWN"
             self._session.add(
@@ -381,6 +388,7 @@ class VerdictRepository:
                         else utcnow() + timedelta(hours=CORROBORATION_WINDOW_HOURS)
                     ),
                     resolved_at=utcnow() if resuelta else None,
+                    payload=mission_payload(m),
                 )
             )
             nuevas += 1
@@ -628,3 +636,100 @@ class VerdictRepository:
             .where(Verdict.analyst_id == analyst.id)
             .where(Verdict.mission_id == mission_id.upper())
         )
+
+
+#: Campos de la misión que NO van al payload porque ya viven en columnas, o
+#: porque cambian con el tiempo y tienen que leerse de su fuente de verdad.
+_FUERA_DEL_PAYLOAD = {
+    "ground_truth",
+    "truth_source",
+    "independent_sources",
+    "kev_listed",
+    "locked",
+}
+
+
+def mission_payload(mision: dict[str, Any]) -> dict[str, Any]:
+    """El contenido de la misión, listo para servir desde el feed."""
+    return {
+        k: (v.isoformat() if isinstance(v, datetime) else v)
+        for k, v in mision.items()
+        if k not in _FUERA_DEL_PAYLOAD
+    }
+
+
+class FeedRepository:
+    """Lectura del feed de misiones desde la base.
+
+    Hasta ahora el feed servía un catálogo fijo en memoria. Leer de la tabla
+    es lo que hace que lo que traen los conectores —CVEs del KEV, C2 de
+    ThreatFox— llegue efectivamente a la pantalla del analista.
+    """
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def page(
+        self, offset: int, limit: int, severity: str | None = None
+    ) -> tuple[list[MissionRecord], int]:
+        """Una página del feed y el total disponible con ese filtro."""
+        base = select(MissionRecord).where(MissionRecord.payload.is_not(None))
+        if severity:
+            base = base.where(MissionRecord.severity == severity)
+
+        total = await self._session.scalar(
+            select(func.count()).select_from(base.subquery())
+        )
+        filas = (
+            await self._session.scalars(
+                base.order_by(
+                    MissionRecord.first_reported_at.desc(), MissionRecord.mission_id
+                )
+                .offset(offset)
+                .limit(limit)
+            )
+        ).all()
+        return list(filas), int(total or 0)
+
+    async def get(self, mission_id: str) -> MissionRecord | None:
+        return await self._session.get(MissionRecord, mission_id.upper())
+
+    async def verdicts_of(
+        self, analyst_id, mission_ids: list[str]
+    ) -> dict[str, Verdict]:
+        """Veredictos del analista sobre las misiones de esta página.
+
+        Una sola consulta para toda la página: sin esto, mostrar "ya emitiste
+        tu veredicto" en cada tarjeta serían veinte consultas por pantalla.
+        """
+        if not mission_ids:
+            return {}
+        filas = (
+            await self._session.scalars(
+                select(Verdict)
+                .where(Verdict.analyst_id == analyst_id)
+                .where(Verdict.mission_id.in_(mission_ids))
+            )
+        ).all()
+        return {v.mission_id: v for v in filas}
+
+    async def counts(self) -> dict[str, Any]:
+        por_sev = dict(
+            (
+                await self._session.execute(
+                    select(MissionRecord.severity, func.count(MissionRecord.mission_id))
+                    .where(MissionRecord.payload.is_not(None))
+                    .group_by(MissionRecord.severity)
+                )
+            ).all()
+        )
+        fuentes = (
+            await self._session.scalars(
+                select(MissionRecord.source).distinct().limit(20)
+            )
+        ).all()
+        return {
+            "total": sum(int(v) for v in por_sev.values()),
+            "by_severity": {k: int(v) for k, v in por_sev.items()},
+            "sources": sorted(set(fuentes)),
+        }
