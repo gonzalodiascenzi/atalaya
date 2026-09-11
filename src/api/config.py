@@ -11,6 +11,9 @@ from functools import lru_cache
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+# Vercel + Neon: la integracion crea DATABASE_POSTGRES_URL (y variantes),
+# no DATABASE_URL. Se completa aca para que la API arranque igual.
+os.environ.setdefault("DATABASE_URL", os.environ.get("DATABASE_POSTGRES_URL", ""))
 
 
 class Settings(BaseSettings):
