@@ -169,19 +169,41 @@ def recolectar(
 
 
 def avistamientos_de(grupo: list[RawIndicator]) -> list[dict[str, Any]]:
-    """Convierte los indicadores crudos en filas de avistamiento."""
-    return [
-        {
-            "source_name": i.source.value,
-            "source_family": i.source.family.value,
-            "source_reference": i.source_reference,
-            "source_confidence": i.source_confidence,
-            "first_reported_at": i.first_reported_at,
-            "sample_available": i.sample_available,
-            "kev_listed": i.kev_listed,
-        }
-        for i in grupo
-    ]
+    """Un avistamiento por FUENTE, no por fila.
+
+    ThreatFox reporta la misma IP varias veces con distintos puertos
+    (`1.2.3.4:443`, `1.2.3.4:8080`). Al sacar el puerto quedan varias filas de
+    la misma fuente para el mismo indicador, y eso no son varias
+    corroboraciones: es un solo operador diciendo lo mismo tres veces. Se
+    colapsan quedándose con la mejor señal de cada una — mayor confianza,
+    aparición más temprana, y "hay muestra" si cualquiera la tenía.
+
+    Descubierto contra datos reales: el primer volcado de ThreatFox chocó
+    contra el índice único de avistamientos.
+    """
+    por_fuente: dict[str, dict[str, Any]] = {}
+    for i in grupo:
+        previo = por_fuente.get(i.source.value)
+        if previo is None:
+            por_fuente[i.source.value] = {
+                "source_name": i.source.value,
+                "source_family": i.source.family.value,
+                "source_reference": i.source_reference,
+                "source_confidence": i.source_confidence,
+                "first_reported_at": i.first_reported_at,
+                "sample_available": i.sample_available,
+                "kev_listed": i.kev_listed,
+            }
+            continue
+        previo["source_confidence"] = max(
+            previo["source_confidence"], i.source_confidence
+        )
+        previo["first_reported_at"] = min(
+            previo["first_reported_at"], i.first_reported_at
+        )
+        previo["sample_available"] = previo["sample_available"] or i.sample_available
+        previo["kev_listed"] = previo["kev_listed"] or i.kev_listed
+    return list(por_fuente.values())
 
 
 async def persistir(misiones: list[dict[str, Any]], crudos: list[RawIndicator]) -> dict:

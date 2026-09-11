@@ -621,3 +621,28 @@ def test_una_verdad_ya_fijada_no_se_toca(migrated_database):
     m = _correr(leer)
     assert m.ground_truth == "MALICIOUS"
     assert m.resolved_at is not None
+
+
+def test_la_misma_ip_con_varios_puertos_es_un_solo_avistamiento(migrated_database):
+    """Regresión encontrada contra datos reales de ThreatFox.
+
+    La misma IP aparece con puertos distintos; al sacar el puerto quedan
+    varias filas de la misma fuente. Eso es un operador repitiéndose, no tres
+    corroboraciones — y persistirlo tal cual chocaba contra el índice único.
+    """
+    import run
+
+    ip = "45.77.10.210"
+    grupo = [
+        indicador(ip, SourceName.THREATFOX, confianza=50),
+        indicador(ip, SourceName.THREATFOX, confianza=90, muestra=True),
+        indicador(ip, SourceName.THREATFOX, confianza=75),
+    ]
+    filas = run.avistamientos_de(grupo)
+    assert len(filas) == 1
+    assert filas[0]["source_confidence"] == 90
+    assert filas[0]["sample_available"] is True
+
+    mision, estado = _ingerir(grupo)  # antes: IntegrityError
+    assert estado == "creada"
+    assert mision["independent_sources"] == 1
