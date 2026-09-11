@@ -14,6 +14,8 @@
 
 *Academia táctica de ciberseguridad sobre inteligencia de amenazas real.*
 
+[![▶ JUGAR AHORA](https://img.shields.io/badge/▶_JUGAR_AHORA-atalaya--rho.vercel.app-39ff88?style=for-the-badge)](https://atalaya-rho.vercel.app)
+
 ![STIX](https://img.shields.io/badge/STIX-2.1-39ff88?style=flat-square)
 ![MITRE](https://img.shields.io/badge/MITRE-ATT%26CK-22d3ee?style=flat-square)
 ![Python](https://img.shields.io/badge/Python-3.12-ffb020?style=flat-square)
@@ -124,6 +126,11 @@ Detalle completo, decisiones de diseño y deuda técnica consciente:
 | Node.js | ≥ 18.18 | Frontend |
 | Docker + Compose V2 | reciente | Stack completo |
 | Terraform | ≥ 1.6 | Despliegue en AWS (opcional) |
+
+### 🎮 Ruta 0 — Sin instalar nada
+
+Ya está desplegado y jugable, con API real y PostgreSQL de verdad:
+**[atalaya-rho.vercel.app](https://atalaya-rho.vercel.app)**
 
 ### ⚡ Ruta 1 — Sólo la consola (30 segundos, cero dependencias de red)
 
