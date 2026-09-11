@@ -69,4 +69,8 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD ["curl", "-fsS", "http://localhost:8000/health"]
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# --no-proxy-headers: en Lambda los pedidos llegan desde 127.0.0.1 (el Web
+# Adapter) y Uvicorn, por defecto, le cree el X-Forwarded-For a 127.0.0.1.
+# Detrás de una Function URL esa cabecera la escribe el cliente. La IP real
+# viene por otro lado (API_CLIENT_IP_HEADER).
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]

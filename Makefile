@@ -118,5 +118,5 @@ secrets: ## Escaneo local de secretos (necesita gitleaks instalado)
 	gitleaks detect --no-git --redact -v
 
 .PHONY: tf-plan
-tf-plan: ## Plan de Terraform (requiere infra/terraform/terraform.tfvars)
+tf-plan: ## Plan de Terraform (AWS; credenciales de la CLI)
 	cd infra/terraform && terraform init -input=false && terraform plan

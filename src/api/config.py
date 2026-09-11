@@ -5,6 +5,7 @@ Todo valor sensible entra por variables de entorno (12-factor). Nada de
 constantes hardcodeadas: si mañana esto corre en ECS, el mismo binario sirve.
 """
 
+import os
 import ssl
 from functools import lru_cache
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -46,6 +47,11 @@ class Settings(BaseSettings):
     # pública, un límite por IP castiga al grupo entero.
     api_rate_limit: int = 120
     api_rate_window: float = 60.0
+    #: Cabecera de la que sale la IP del cliente para el limitador. Vacía =
+    #: la IP de la conexión. En AWS la escribe una CloudFront Function (ver
+    #: infra/terraform/cdn.tf); sólo se puede confiar en ella porque la
+    #: Function URL rechaza todo pedido que no venga firmado por CloudFront.
+    api_client_ip_header: str = ""
 
     # ── Persistencia ─────────────────────────────────────────────────
     # Sin default utilizable a propósito: la API ya no guarda progresión en
@@ -72,7 +78,14 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins(self) -> list[str]:
-        """Convierte la lista separada por comas en algo usable."""
+        """Convierte la lista separada por comas en algo usable.
+
+        `none` = ningún origen cruzado: la consola y la API comparten dominio.
+        Hace falta una palabra porque Lambda descarta las variables vacías, y
+        sin la variable se aplicaría el valor por defecto de desarrollo.
+        """
+        if self.api_cors_origins.strip().lower() == "none":
+            return []
         return [o.strip() for o in self.api_cors_origins.split(",") if o.strip()]
 
     @property
@@ -110,6 +123,13 @@ class Settings(BaseSettings):
             problemas.append(
                 "API_CORS_ORIGINS contiene '*' y la API envía cookies de sesión: "
                 "cualquier sitio podría operar en nombre del analista"
+            )
+        locales = [o for o in self.cors_origins if "localhost" in o or "127.0.0.1" in o]
+        if locales:
+            problemas.append(
+                f"API_CORS_ORIGINS admite orígenes locales ({', '.join(locales)}): "
+                "es el valor de desarrollo. Si la consola comparte dominio con la "
+                "API, poné API_CORS_ORIGINS=none"
             )
         if not self.database_url.strip():
             problemas.append("DATABASE_URL no está configurada")
@@ -194,7 +214,58 @@ def split_tls(dsn: str) -> tuple[str, dict]:
     return url, {}
 
 
+#: Variable de entorno → variable que se completa con el valor leído de SSM.
+#: En Lambda, las variables de entorno sólo traen el NOMBRE del parámetro; el
+#: secreto se lee en el arranque. Así no queda en la configuración de la
+#: función, ni en la consola de AWS, ni en el estado de Terraform.
+_SECRETOS_SSM = {
+    "DATABASE_URL_SSM": "DATABASE_URL",
+    "API_SECRET_KEY_SSM": "API_SECRET_KEY",
+}
+
+
+def load_ssm_secrets(cliente=None) -> list[str]:
+    """Completa el entorno con los secretos de SSM Parameter Store.
+
+    Sólo actúa si hay variables `*_SSM` (o sea, en AWS). Localmente no hace
+    nada y ni siquiera importa boto3. Devuelve qué variables completó.
+
+    Falla FUERTE si un parámetro declarado no se puede leer: arrancar sin la
+    clave de firma o sin la base es peor que no arrancar.
+    """
+    pedidos = {env: destino for env, destino in _SECRETOS_SSM.items() if os.getenv(env)}
+    if not pedidos:
+        return []
+
+    if cliente is None:
+        import boto3  # sólo en AWS
+
+        cliente = boto3.client("ssm")
+
+    nombres = [os.environ[env] for env in pedidos]
+    respuesta = cliente.get_parameters(Names=nombres, WithDecryption=True)
+    faltan = respuesta.get("InvalidParameters") or []
+    if faltan:
+        raise RuntimeError(
+            "No se pudieron leer estos secretos de SSM: "
+            + ", ".join(faltan)
+            + ". ¿Se cargaron con `aws ssm put-parameter`? Ver outputs de Terraform."
+        )
+
+    valores = {p["Name"]: p["Value"] for p in respuesta["Parameters"]}
+    completadas = []
+    for env, destino in pedidos.items():
+        os.environ[destino] = valores[os.environ[env]]
+        completadas.append(destino)
+    return completadas
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """Singleton cacheado: se lee el entorno una sola vez por proceso."""
+    """Singleton cacheado: se lee el entorno una sola vez por proceso.
+
+    En AWS, primero trae los secretos de SSM: tienen que estar en el entorno
+    ANTES de construir Settings, porque `assert_production_ready` los valida.
+    """
+    load_ssm_secrets()
     return Settings()

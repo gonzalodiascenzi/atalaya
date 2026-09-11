@@ -1,38 +1,34 @@
-# ATALAYA // Requisitos de versión y proveedores (GCP).
+# ATALAYA // Requisitos de versión y proveedor (AWS).
 terraform {
   required_version = ">= 1.6.0"
 
   required_providers {
-    google = {
-      source  = "hashicorp/google"
-      version = "~> 6.14"
-    }
-    random = {
-      source  = "hashicorp/random"
-      version = "~> 3.6"
+    aws = {
+      source = "hashicorp/aws"
+      # >= 6.28 hace falta por `invoked_via_function_url` en aws_lambda_permission
+      # (ver lambda_api.tf). Sin eso la URL pública de Lambda responde 403.
+      version = "~> 6.64"
     }
   }
 
-  # Estado remoto en GCS. Comentado porque el bucket tiene que existir antes
-  # del primer `init`. Crealo una sola vez, a mano:
+  # Estado remoto. Comentado: el bucket tiene que existir antes del primer
+  # `init`, y el estado de ESTE proyecto no guarda secretos (los valores viven
+  # en SSM, cargados fuera de Terraform), así que el estado local alcanza para
+  # el arranque. En equipo, se mueve a S3 con bloqueo:
   #
-  #   gcloud storage buckets create gs://atalaya-tfstate \
-  #     --location=us-central1 --uniform-bucket-level-access
-  #   gcloud storage buckets update gs://atalaya-tfstate --versioning
-  #
-  # backend "gcs" {
-  #   bucket = "atalaya-tfstate"
-  #   prefix = "core"
+  # backend "s3" {
+  #   bucket       = "atalaya-tfstate-<cuenta>"
+  #   key          = "prod/terraform.tfstate"
+  #   region       = "us-east-1"
+  #   encrypt      = true
+  #   use_lockfile = true
   # }
 }
 
-provider "google" {
-  project = var.project_id
-  region  = var.region
-  zone    = var.zone
+provider "aws" {
+  region = var.region
 
-  # Etiquetas aplicadas a todo recurso que las soporte. En GCP se llaman
-  # `labels` (minúsculas, sin espacios) y no `tags`: los `tags` de GCP son
-  # otra cosa, se usan como destino de reglas de firewall.
-  default_labels = local.common_labels
+  default_tags {
+    tags = local.common_tags
+  }
 }

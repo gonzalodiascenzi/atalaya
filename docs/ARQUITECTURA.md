@@ -111,7 +111,7 @@ sequenceDiagram
 | **Defang obligatorio en la UI** | Mostrar el observable crudo | Un feed de amenazas con URLs clickeables es un incidente esperando a ocurrir. |
 | **Degradación autónoma del frontend** | Pantalla de error | Un entorno de entrenamiento que muere cuando muere el backend no entrena a nadie. |
 | **Perfiles en Docker Compose** | Un compose monolítico | El stack CTI completo pide ~8 GB. Nadie debería necesitar eso para tocar el frontend. |
-| **`admin_cidrs` sin default en Terraform** | Default `0.0.0.0/0` | El "lo abro a todos por ahora" queda para siempre. Terraform aborta el plan. |
+| **La API sólo detrás de CloudFront (OAC)** | Function URL pública | Abierta, cualquiera se salteaba CloudFront y elegía la IP que veía el limitador. |
 
 ---
 
@@ -145,61 +145,67 @@ a `TLP:CLEAR`, pero el objeto de marcado es el mismo.
 
 ---
 
-## 5. Capas de red (GCP)
+## 5. Capas de red (AWS)
 
 ```mermaid
 flowchart TB
     NET["🌍 Internet"]
-    ADM["🔐 admin_cidrs<br/>IP fija o VPN"]
-    IAP["🚪 IAP TCP forwarding<br/>35.235.240.0/20"]
+    GH["🐙 GitHub Actions<br/>OIDC · sólo main"]
 
-    subgraph GCP["Proyecto GCP"]
-        subgraph RUN["Cloud Run · escala a cero"]
-            FE["consola<br/>:3000"]
-            API["API<br/>:8000"]
+    subgraph AWS["Cuenta AWS · us-east-1"]
+        CF["CloudFront<br/>CSP · HSTS · IP real → x-atalaya-ip"]
+        S3[("S3 · consola estática<br/>privado · sólo esta distribución")]
+        subgraph LAMBDA["Lambda · se apaga sin tráfico"]
+            API["FastAPI + Web Adapter<br/>URL con AWS_IAM"]
         end
-        subgraph VPC["VPC 10.42.0.0/24"]
-            CTI["nodo CTI<br/>tag: cti-node<br/>sin IP pública"]
-            SQL[("Cloud SQL<br/>IP privada")]
-        end
-        NAT["Cloud NAT"]
-        SM["🔑 Secret Manager"]
+        SSM["🔑 SSM Parameter Store<br/>SecureString"]
+        ECR["ECR · tags inmutables"]
     end
 
-    NET -->|"HTTPS"| FE
-    NET -->|"HTTPS"| API
-    API -->|"egreso VPC directo"| SQL
-    API -->|"secretAccessor<br/>secreto por secreto"| SM
-    ADM -.->|"8080 · 8443 · 5001"| CTI
-    IAP -.->|"22"| CTI
-    CTI -->|"feeds OSINT"| NAT
-    NAT --> NET
+    NEON[("Neon · Postgres<br/>TLS verificado")]
+
+    NET -->|"HTTPS"| CF
+    CF -->|"/* · OAC"| S3
+    CF -->|"/api/* · OAC firmado"| API
+    API -->|"lee SUS 2 secretos al arrancar"| SSM
+    API -->|"TLS verify-full"| NEON
+    GH -->|"push de imagen"| ECR
+    GH -->|"update-function-code"| API
+    ECR -.-> API
 ```
 
-**La diferencia de modelo respecto de AWS.** En GCP no existe el security
-group adjunto a la instancia: el firewall es de VPC y se aplica por
-`target_tags` o por `target_service_accounts`. Esto último es lo correcto —
-concede por identidad y no por una etiqueta que cualquiera puede ponerse — y
-es hacia donde debería migrar `allow_cti_admin`.
+**Una sola puerta.** La URL de la función exige firma IAM y sólo CloudFront
+tiene permiso para firmarla (OAC, acotado a esta distribución). El bucket de
+la consola, lo mismo. No hay camino a la API ni a la consola que no pase por
+CloudFront, que es donde se ponen las cabeceras y se fija la IP del cliente.
 
-**El 22 nunca se abre a Internet.** IAP hace el forwarding TCP desde un rango
-publicado y fijo; la autenticación es la identidad de Google del operador y
-queda auditada. Es el reemplazo del bastión con IP pública.
+**Por qué la IP la escribe CloudFront.** Una Function URL deja en
+`X-Forwarded-For` sólo el valor de más a la izquierda: el que escribe el
+cliente. Con la URL abierta y Uvicorn confiando en esa cabecera, el limitador
+de tasa se salteaba rotando una IP inventada por pedido. Ahora una CloudFront
+Function la pisa con `event.viewer.ip`, y Uvicorn corre con
+`--no-proxy-headers`.
 
-**Los secretos no pasan por Terraform.** El código crea el contenedor; el
-valor se carga con `gcloud secrets versions add`. Si el valor entrara por
+**Los secretos no pasan por Terraform.** Terraform sólo conoce los NOMBRES de
+los parámetros para dar permiso de lectura; los valores se cargan con
+`aws ssm put-parameter` y la API los lee al arrancar. Si el valor entrara por
 Terraform quedaría en texto plano en el archivo de estado — y el estado suele
 tener más lectores que el secreto que protege.
+
+**Neon y `sslmode`.** Neon entrega `?sslmode=require&channel_binding=require`,
+que asyncpg no entiende. `split_tls` los traduce a un `SSLContext` que
+verifica cadena y nombre de host: perder channel binding sin compensarlo
+habría sido una degradación silenciosa.
 
 ## 6. Qué falta (deuda consciente)
 
 | Pendiente | Impacto | Prioridad |
 |---|---|---|
-| Rate limiting distribuido (hoy es por proceso) | Con N workers hay N contadores | 🟡 Media |
-| La URL de CORS del frontend se arma a mano en Terraform | Si el proyecto usa el otro formato de URL de Cloud Run, el navegador bloquea la API | 🟡 Media |
+| Rate limiting distribuido (hoy es por proceso) | Con N instancias de Lambda hay N contadores | 🟡 Media |
 | Paginación del feed por desplazamiento, no por clave | Con ingesta concurrente, una misión nueva puede correr la página y repetir una | 🟢 Baja |
-| Firewall por `target_service_accounts` en lugar de `target_tags` | Una etiqueta la puede reclamar cualquier instancia | 🟡 Media |
 | Proveedor OIDC además de contraseñas locales | Hoy cada quien mantiene una contraseña más | 🟡 Media |
 | Doble token anti-CSRF además de SameSite | SameSite=strict alcanza hoy, pero es una sola capa | 🟢 Baja |
 | Sincronización bidireccional OpenCTI ↔ MISP | Duplicación manual de eventos | 🟢 Baja |
-| Dominio propio + Cloud Armor delante de Cloud Run | Hoy se sirve en la URL `*.run.app` sin WAF | 🟡 Media |
+| Dominio propio + AWS WAF delante de CloudFront | Hoy se sirve en `*.cloudfront.net` sin WAF | 🟡 Media |
+| Logs de acceso de CloudFront | Ante un incidente, sólo están los logs de la Lambda: no se ve lo que CloudFront cortó o sirvió de la consola | 🟡 Media |
+| Ingesta programada en AWS | Hoy se corre a mano contra Neon | 🟡 Media |

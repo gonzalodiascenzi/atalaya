@@ -4,9 +4,8 @@
 #  Construye la imagen en GitHub (no hace falta Docker local), la escanea y
 #  recién si está limpia la publica en GHCR.
 #
-#  Sin secretos: se autentica con el GITHUB_TOKEN efímero de la corrida.
-#  Para AWS Lambda, que sólo toma imágenes de ECR, se suma un paso que
-#  asume un rol IAM por OIDC — tampoco guarda claves en GitHub.
+#  Sin credenciales guardadas: GHCR usa el GITHUB_TOKEN efímero de la
+#  corrida, y AWS un rol IAM que se asume por OIDC.
 # ══════════════════════════════════════════════════════════════════════════
 
 name: Imagen
@@ -103,3 +102,84 @@ jobs:
             echo '```'
             echo "digest: \`${{ steps.publicar.outputs.digest }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── AWS Lambda ─────────────────────────────────────────────────────────
+  # Lambda sólo toma imágenes de ECR, y de UNA plataforma: el índice que se
+  # publica en GHCR (con SBOM y procedencia adjuntos) no lo acepta. Se vuelve
+  # a armar desde la caché del job anterior —las mismas capas, sin compilar
+  # nada— y se sube a ECR sin adjuntos.
+  #
+  # Se enciende solo cuando la infraestructura existe: después del
+  # `terraform apply` se cargan AWS_CUENTA (secreto) y AWS_DISTRIBUCION_ID /
+  # AWS_CONSOLA_URL (variables). AWS_CUENTA no es una credencial: va como
+  # secreto sólo para que GitHub la tape en los logs, que en un repo público
+  # los lee cualquiera.
+  lambda:
+    name: λ Desplegar en AWS Lambda
+    needs: construir
+    if: github.ref == 'refs/heads/main' && vars.AWS_DISTRIBUCION_ID != ''
+    runs-on: ubuntu-latest
+    # Sin `environment:`, a propósito: cambiaría el sujeto del token OIDC y
+    # el rol, que confía sólo en `ref:refs/heads/main`, lo rechazaría.
+    permissions:
+      contents: read
+      id-token: write       # canjear el token de GitHub por credenciales de AWS
+    env:
+      FUNCION: atalaya-prod-api
+      IMAGEN_ECR: ${{ secrets.AWS_CUENTA }}.dkr.ecr.us-east-1.amazonaws.com/atalaya-api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Credenciales temporales (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_CUENTA }}:role/atalaya-prod-github-deploy
+          aws-region: us-east-1
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      # Los tags de ECR son inmutables: volver a correr el mismo commit no
+      # puede republicar, así que se saltea si ya está.
+      - name: ¿Ya está en ECR?
+        id: ecr
+        run: |
+          TAG="sha-${GITHUB_SHA::7}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if aws ecr describe-images --repository-name atalaya-api \
+               --image-ids imageTag="$TAG" > /dev/null 2>&1; then
+            echo "existe=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publicar en ECR (una plataforma, sin adjuntos)
+        if: steps.ecr.outputs.existe != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: src/api
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGEN_ECR }}:${{ steps.ecr.outputs.tag }}
+          cache-from: type=gha
+          provenance: false
+          sbom: false
+
+      - name: Actualizar la función
+        env:
+          TAG: ${{ steps.ecr.outputs.tag }}
+        run: |
+          aws lambda update-function-code --function-name "$FUNCION" \
+            --image-uri "$IMAGEN_ECR:$TAG" --query LastUpdateStatus --output text
+          aws lambda wait function-updated-v2 --function-name "$FUNCION"
+
+      # Por CloudFront y no por la URL directa: la directa responde 403 por
+      # diseño. Así se prueba el camino completo que usa un jugador.
+      - name: Prueba de humo
+        env:
+          CONSOLA: ${{ vars.AWS_CONSOLA_URL }}
+        run: |
+          for intento in 1 2 3 4 5 6; do
+            if curl -fsS --max-time 20 "$CONSOLA/health"; then echo; exit 0; fi
+            echo "intento $intento: todavía no responde"; sleep 10
+          done
+          exit 1

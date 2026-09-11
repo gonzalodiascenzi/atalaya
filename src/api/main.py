@@ -107,8 +107,27 @@ _STARTED_AT = time.monotonic()
 _RATE_BUCKETS: dict[str, deque[float]] = defaultdict(deque)
 _RATE_LIMIT = settings.api_rate_limit
 _RATE_WINDOW = settings.api_rate_window
+_CLIENT_IP_HEADER = settings.api_client_ip_header.strip().lower()
 _RATE_LAST_PURGE = 0.0
 _RATE_PURGE_EVERY = 300.0  # segundos
+
+
+def _client_ip(request: Request) -> str:
+    """IP del cliente, a los fines del limitador.
+
+    Detrás de CloudFront + Lambda NO sirve la IP de la conexión: la Function
+    URL deja en X-Forwarded-For sólo el valor de más a la izquierda, que es
+    justo el que escribe el cliente, y Uvicorn confiaría en él. Con eso, el
+    límite se saltaba mandando una IP inventada distinta en cada pedido.
+
+    En AWS la IP real la escribe una CloudFront Function a partir de la
+    conexión TCP, pisando lo que haya mandado el cliente.
+    """
+    if _CLIENT_IP_HEADER:
+        # Si falta, todos esos pedidos comparten un solo cubo: ante la duda,
+        # se limita más, no menos.
+        return request.headers.get(_CLIENT_IP_HEADER) or "sin-ip"
+    return request.client.host if request.client else "unknown"
 
 
 def _purge_rate_buckets(now: float) -> None:
@@ -344,7 +363,10 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     # X-Callsign ya no existe: la identidad sale del token. Dejarla habilitada
     # era superficie muerta apuntando al modelo viejo.
-    allow_headers=["Authorization", "Content-Type"],
+    # x-amz-content-sha256: el hash del cuerpo que exige CloudFront (OAC) para
+    # firmar los POST hacia Lambda. El cliente lo manda siempre; en local cruza
+    # de origen (consola :3000 → API :8000) y el preflight lo tiene que admitir.
+    allow_headers=["Authorization", "Content-Type", "x-amz-content-sha256"],
     max_age=600,
 )
 
@@ -355,7 +377,7 @@ async def hardening_middleware(request: Request, call_next):
 
     Nada exótico: es el mínimo que debería tener cualquier API expuesta.
     """
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _client_ip(request)
     now = time.monotonic()
     _purge_rate_buckets(now)
     bucket = _RATE_BUCKETS[client_ip]

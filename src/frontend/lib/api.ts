@@ -39,14 +39,34 @@ export class UnauthorizedError extends Error {
   }
 }
 
+/**
+ * SHA-256 del cuerpo, en hexadecimal.
+ *
+ * En AWS la API sólo acepta pedidos firmados por CloudFront (OAC). CloudFront
+ * firma, pero no calcula el hash del cuerpo: lo tiene que mandar el cliente
+ * en `x-amz-content-sha256`. Sin él, todo POST muere con 403.
+ */
+export async function hashCuerpo(cuerpo: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(cuerpo));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 async function raw<T>(path: string, init?: RequestInit): Promise<T> {
+  const metodo = (init?.method ?? 'GET').toUpperCase();
+  const firma: Record<string, string> = {};
+  if (metodo !== 'GET' && metodo !== 'HEAD') {
+    // También sin cuerpo (renovar sesión, salir): se firma el hash del vacío.
+    const cuerpo = typeof init?.body === 'string' ? init.body : '';
+    firma['x-amz-content-sha256'] = await hashCuerpo(cuerpo);
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
     const res = await fetch(`${API_BASE}${path}`, {
       ...init,
       signal: controller.signal,
-      headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+      headers: { 'Content-Type': 'application/json', ...firma, ...(init?.headers ?? {}) },
       cache: 'no-store',
       // Las cookies de sesión son httpOnly: JavaScript no las ve ni las puede
       // adjuntar a mano. `credentials: include` es lo que hace que el

@@ -1,0 +1,82 @@
+# ══════════════════════════════════════════════════════════════════════════
+#  ATALAYA // Consola → S3 + CloudFront
+#  ------------------------------------------------------------------------
+#  Export estático de Next (sin servidor): HTML, JS y CSS a un bucket
+#  privado que sólo lee CloudFront. La API vive en el mismo dominio, detrás
+#  de /api/*, así que la consola se compila con NEXT_PUBLIC_API_URL vacía.
+#
+#  Se enciende sola cuando existe la infraestructura (ver imagen.yml).
+# ══════════════════════════════════════════════════════════════════════════
+
+name: Consola
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/frontend/**"
+      - ".github/workflows/consola.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Un despliegue a medio subir es peor que uno demorado: no se cancela.
+concurrency:
+  group: consola-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  desplegar:
+    name: 🛰️ Construir y publicar la consola
+    if: github.ref == 'refs/heads/main' && vars.AWS_DISTRIBUCION_ID != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write       # OIDC con AWS
+    defaults:
+      run:
+        working-directory: src/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - run: npm ci
+
+      - run: npm test
+
+      - name: Construir (export estático)
+        run: npm run build
+        env:
+          NEXT_OUTPUT: export
+          NEXT_PUBLIC_API_URL: ""
+
+      - name: Credenciales temporales (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_CUENTA }}:role/atalaya-prod-github-deploy
+          aws-region: us-east-1
+
+      # Dos pasadas. Lo de _next/static lleva el hash en el nombre: nunca
+      # cambia, se cachea un año. El HTML cambia en cada despliegue: no-cache.
+      # Lo viejo de _next/static NO se borra: un navegador con el HTML
+      # anterior todavía abierto lo sigue pidiendo.
+      - name: Subir a S3
+        env:
+          BUCKET: atalaya-prod-consola-${{ secrets.AWS_CUENTA }}
+        run: |
+          aws s3 sync out/_next/static "s3://$BUCKET/_next/static" \
+            --cache-control "public,max-age=31536000,immutable"
+          aws s3 sync out "s3://$BUCKET" --delete \
+            --exclude "_next/static/*" --cache-control "no-cache"
+
+      - name: Invalidar la caché de CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ vars.AWS_DISTRIBUCION_ID }}" --paths "/*" \
+            --query Invalidation.Id --output text

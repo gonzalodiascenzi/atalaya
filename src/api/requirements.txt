@@ -17,6 +17,9 @@ orjson==3.12.0
 pyjwt==2.13.0
 argon2-cffi==25.1.0
 
+# AWS: lectura de secretos desde SSM Parameter Store (sólo se importa en Lambda)
+boto3==1.43.92
+
 # Persistencia
 sqlalchemy[asyncio]==2.0.52
 asyncpg==0.31.0

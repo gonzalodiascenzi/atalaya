@@ -109,7 +109,7 @@ Detalle completo, decisiones de diseño y deuda técnica consciente:
 | 💾 **Persistencia** | PostgreSQL 16 · SQLAlchemy 2.0 async · Alembic | Eventos de XP append-only; la progresión se deriva de ellos |
 | 🖥️ **Frontend** | Next.js 15 · React 19 · Tailwind 3.4 | Consola cyberpunk |
 | 🐳 **Local** | Docker Compose (con perfiles) | 13 servicios, arrancables por partes |
-| ☁️ **Nube** | Terraform 1.10 · GCP | Cloud Run con escalado a cero, Secret Manager, VPC + Cloud NAT |
+| ☁️ **Nube** | Terraform 1.10 · AWS | CloudFront + S3 (consola) · Lambda (API) · SSM · Neon (Postgres) |
 | 🛡️ **CI/CD** | GitHub Actions | 9 puertas: secretos, lint, tests, STIX, IaC, contenedores |
 
 ---
@@ -123,7 +123,7 @@ Detalle completo, decisiones de diseño y deuda técnica consciente:
 | Python | ≥ 3.12 | API y conectores |
 | Node.js | ≥ 18.18 | Frontend |
 | Docker + Compose V2 | reciente | Stack completo |
-| Terraform | ≥ 1.6 | Despliegue en GCP (opcional) |
+| Terraform | ≥ 1.6 | Despliegue en AWS (opcional) |
 
 ### ⚡ Ruta 1 — Sólo la consola (30 segundos, cero dependencias de red)
 
@@ -407,7 +407,7 @@ confianza: si el despliegue falla a mitad de camino, no hay retirada.
 | Local | Contenedor `postgres:16-alpine` (`make db-up`) |
 | Tests | PostgreSQL efímero vía `pgserver` — nunca SQLite |
 | CI | Servicio de Postgres de GitHub Actions |
-| GCP | Neon/Supabase (gratis) o Cloud SQL (`enable_cloud_sql`) |
+| AWS | Neon (Postgres serverless, nivel gratuito) |
 
 Los tests corren contra PostgreSQL **real** porque el repositorio usa índices
 parciales, funciones de ventana y `SELECT ... FOR UPDATE`. Contra SQLite
@@ -641,74 +641,77 @@ make lint && make test && make stix-validate
 
 ---
 
-## ☁️ Infraestructura (GCP)
+## ☁️ Infraestructura (AWS)
 
-```bash
-cd infra/terraform && cp terraform.tfvars.example terraform.tfvars
+```
+navegador ──HTTPS──▶ CloudFront ──┬── /*      ──▶ S3 (consola estática, privado)
+                                  └── /api/*  ──▶ Lambda (FastAPI) ──▶ Neon (Postgres)
 ```
 
-Completá `project_id` y `admin_cidrs` con tu IP real (`curl -s https://ifconfig.me`), y:
+Una sola dirección para la consola y la API. Por eso las cookies de sesión
+pueden ser `SameSite=strict` y no hace falta CORS: con dos dominios habría que
+haber relajado la defensa contra CSRF.
 
-```bash
-terraform init && terraform plan
-```
+### Por qué así
 
-### Por qué Cloud Run
-
-Escala a cero. Un proyecto de entrenamiento recibe visitas a ráfagas, y pagar
-una máquina prendida 24/7 para tráfico intermitente es tirar plata. Además
-corre los `Dockerfile` de este repo tal cual están.
-
-**Qué construye:** VPC + subred con Flow Logs · Cloud NAT (salida sin IPs
-públicas) · 5 reglas de firewall · Artifact Registry con política de limpieza ·
-3 cuentas de servicio dedicadas · 3 secretos en Secret Manager · 2 servicios de
-Cloud Run · y, opcionales y apagados por defecto, Cloud SQL y el nodo CTI.
+- **Lambda y no App Runner:** App Runner no acepta clientes nuevos desde el
+  30/04/2026. **Y no ECS:** Lambda se apaga sola cuando no hay tráfico.
+- **La misma imagen que en Docker Compose.** El Lambda Web Adapter (una capa
+  en el `Dockerfile`) traduce los eventos de Lambda a HTTP; la API no se
+  enteró de que corre en Lambda.
+- **Costo ≈ $0** con tráfico de demo: Lambda y CloudFront tienen nivel
+  gratuito que no vence, S3 y ECR cuestan centavos, Neon es gratis.
 
 ### Endurecimiento incluido de fábrica
 
-- ⛔ `admin_cidrs` **no tiene default** y **rechaza `0.0.0.0/0`** por validación.
-  Junto con otras 7 validaciones, abortan el `plan` antes de tocar nada.
-- 🔑 **Terraform crea los secretos, nunca sus valores.** Cargar el valor en el
-  código lo deja en texto plano dentro del archivo de estado, que casi siempre
-  tiene más lectores que el secreto original. Las versiones se cargan aparte
-  con `gcloud secrets versions add`.
-- 👤 **Cuentas de servicio dedicadas.** El proyecto trae una cuenta de cómputo
-  por defecto con rol Editor sobre todo; usarla es el hallazgo #1 de cualquier
-  auditoría de GCP. Acá cada carga de trabajo tiene identidad propia con lo
-  mínimo, y los permisos de Secret Manager se conceden **secreto por secreto**.
-- 🚪 **SSH sólo por IAP.** El puerto 22 nunca se abre a Internet: se entra con
-  `--tunnel-through-iap`, con identidad de Google y auditoría completa.
-- 🛡️ **Shielded VM** en el nodo CTI (arranque seguro, vTPM, monitoreo de
-  integridad) y OS Login con claves de proyecto bloqueadas.
-- 🌐 **Sin IPs públicas** en el nodo CTI ni en Cloud SQL. La salida va por NAT.
-- 🧾 **Deny de ingreso explícito y registrado** en prioridad 65534: GCP ya
-  deniega en 65535, pero de forma invisible en los logs.
-- 💸 `max_instances` acotado: es el freno de mano contra la factura.
+- 🔒 **La API sólo se alcanza a través de CloudFront.** La URL de la función
+  usa `AWS_IAM` y CloudFront firma cada pedido (OAC): la URL directa da 403.
+  Sin esto, cualquiera podía hablarle a la API salteándose CloudFront.
+- 🧭 **La IP del limitador no la elige el cliente.** Detrás de una Function
+  URL, `X-Forwarded-For` queda reducido al valor que escribe el cliente. Una
+  CloudFront Function escribe la IP real en `x-atalaya-ip`, pisando cualquier
+  valor recibido, y la API limita por esa.
+- 🔑 **Los secretos no pasan por Terraform.** Viven en SSM Parameter Store
+  (`SecureString`) y se cargan con la CLI; Terraform sólo conoce sus nombres.
+  La Lambda los lee al arrancar. Si Terraform los creara, sus valores quedarían
+  en texto plano en el archivo de estado.
+- 🪪 **GitHub no guarda credenciales.** Despliega con un rol que asume por
+  OIDC, atado al sujeto **inmutable** (`dueño@ID/repo@ID`) y sólo a `main`. El
+  rol publica imágenes y actualiza el código; no puede tocar IAM ni la
+  infraestructura.
+- 🏷️ **Tags de ECR inmutables:** nadie reemplaza en silencio lo que corre.
+- 🧱 **Bucket privado por las cuatro vías:** sólo lo lee ESTA distribución.
+- 🛡️ **Cabeceras de seguridad** (CSP, HSTS de 2 años, `DENY`) desde CloudFront.
+- 💸 **Techo de gasto natural:** la cuenta admite 10 ejecuciones concurrentes
+  de Lambda; logs con retención de 14 días (por defecto, CloudWatch guarda
+  para siempre).
 
-### Costo
+### Despliegue
 
-| Componente | Costo |
-|---|---|
-| Cloud Run (2 servicios, escala a cero) | Nivel gratuito para tráfico de demo |
-| Secret Manager, Artifact Registry, VPC | Nivel gratuito |
-| Cloud SQL (`enable_cloud_sql`) | ❌ **Sin nivel gratuito.** Apagado por defecto |
-| Nodo CTI (`enable_cti_node`) | ❌ ~8 GB sostenidos. Apagado por defecto |
+```bash
+# 1. Infraestructura (humano, una vez)
+cd infra/terraform && terraform init && terraform plan
 
-La ruta de costo cero es dejar los dos últimos apagados y usar un PostgreSQL
-serverless externo (Neon, Supabase), cargando su cadena de conexión en el
-secreto `atalaya-database-url`. La API consume un `DATABASE_URL` y le da igual
-de dónde salga.
+# 2. Secretos, fuera de Terraform (los comandos exactos: `terraform output cargar_secretos`)
+aws ssm put-parameter --type SecureString --name /atalaya/prod/api-secret-key --value "$(openssl rand -hex 32)"
+aws ssm put-parameter --type SecureString --name /atalaya/prod/database-url --value "$DATABASE_URL_PROD"
 
-> ⚠️ Los niveles gratuitos cambian. Verificá los límites vigentes antes de
-> comprometerte.
+# 3. Migraciones contra Neon
+cd src/api && ALEMBIC_DATABASE_URL="$DATABASE_URL_PROD" alembic upgrade head
+```
+
+Después, cada push a `main` despliega solo: `imagen.yml` publica la API en
+ECR y actualiza la Lambda; `consola.yml` compila el export estático, lo sube
+a S3 e invalida CloudFront. Se encienden cuando existen el secreto
+`AWS_CUENTA` y las variables `AWS_DISTRIBUCION_ID` y `AWS_CONSOLA_URL`.
 
 ### El detalle que muerde
 
-`NEXT_PUBLIC_API_URL` se resuelve en tiempo de **build**, no de runtime: Next
-la incrusta en el bundle del navegador. Pasarla como variable de entorno de
-Cloud Run no afecta al código del cliente. Tiene que ir como `--build-arg` al
-construir la imagen — el output `comandos_build` de Terraform te da la línea
-exacta.
+`NEXT_PUBLIC_API_URL` se resuelve en tiempo de **build**: Next la incrusta en
+el bundle. En AWS se compila **vacía**, así la consola llama a `/api/...` en
+su propio dominio. Y como la API exige pedidos firmados por CloudFront, el
+cliente manda en cada POST el hash del cuerpo (`x-amz-content-sha256`):
+CloudFront firma, pero no calcula ese hash.
 
 ## 📁 Estructura
 
@@ -717,17 +720,19 @@ atalaya/
 ├── 📄 README.md · SECURITY.md · Makefile
 ├── 🔧 .env.example          # plantilla con generadores de secretos
 ├── 🛡️ .github/workflows/
-│   └── devsecops.yml        # 9 puertas de calidad
+│   ├── devsecops.yml        # 9 puertas de calidad
+│   ├── imagen.yml           # API → GHCR (SBOM + procedencia) → ECR → Lambda
+│   └── consola.yml          # consola → S3 → CloudFront
 ├── 🐳 deployments/docker/
 │   └── docker-compose.yml   # 13 servicios · perfiles: (base) · cti · hunt
-├── ☁️ infra/terraform/          # GCP
-│   ├── main.tf              # APIs · VPC · Cloud NAT · firewall
-│   ├── identity.tf          # cuentas de servicio · registro · secretos
-│   ├── cloudrun.tf          # API y consola, escalado a cero
-│   ├── data_layer.tf        # Cloud SQL (opcional, apagado)
-│   ├── cti_node.tf          # nodo OpenCTI/MISP (opcional, apagado)
-│   ├── variables.tf         # 8 validaciones que abortan el plan
-│   ├── outputs.tf · versions.tf · terraform.tfvars.example
+├── ☁️ infra/terraform/          # AWS
+│   ├── cdn.tf               # CloudFront · OAC · cabeceras · función de IP
+│   ├── lambda_api.tf        # API en Lambda · URL cerrada · permisos mínimos
+│   ├── frontend.tf          # bucket privado de la consola
+│   ├── ecr.tf               # registro con tags inmutables
+│   ├── github_oidc.tf       # rol de despliegue sin claves
+│   ├── funciones/           # CloudFront Functions
+│   ├── main.tf · variables.tf · outputs.tf · versions.tf
 ├── 🧠 src/
 │   ├── api/                 # FastAPI
 │   │   ├── main.py          # endpoints + endurecimiento HTTP
@@ -754,7 +759,7 @@ atalaya/
 ├── 📚 docs/
 │   ├── VERIFICACION.md      # ← el diseño que define el producto
 │   └── ARQUITECTURA.md
-└── 🧪 tests/                # 139 backend + 205 frontend
+└── 🧪 tests/                # 162 backend + 209 frontend
 ```
 
 ---
@@ -766,7 +771,7 @@ atalaya/
 - [x] Motor de progresión con 4 rangos y penalizaciones
 - [x] Consola cyberpunk con scroll infinito y degradación autónoma
 - [x] Pipeline DevSecOps de 9 puertas
-- [x] Infraestructura en GCP (Cloud Run + Secret Manager + VPC)
+- [x] Infraestructura en AWS (CloudFront + S3 + Lambda + SSM), despliegue continuo por OIDC
 - [x] Persistencia en PostgreSQL con progresión derivada de eventos
 - [x] Bucle de verificación con puntuación por calibración (Brier)
 - [x] Autenticación con JWT + refresh rotativo y roles

@@ -89,3 +89,38 @@ def test_el_esquema_postgresql_se_normaliza(monkeypatch):
     s = Settings()
     assert s.async_database_url.startswith("postgresql+asyncpg://")
     assert isinstance(s.database_connect_args["ssl"], ssl.SSLContext)
+
+
+# ── Arranque en producción ───────────────────────────────────────────────
+
+
+def _produccion(**cambios):
+    """Una configuración de producción válida, sin leer `.env` del disco."""
+    from config import Settings
+
+    valores = dict(
+        atalaya_env="prod",
+        api_secret_key="x" * 40,  # largo suficiente, sin forma de secreto
+        database_url="postgresql://base/atalaya",
+        api_cors_origins="none",
+    )
+    valores.update(cambios)
+    return Settings(_env_file=None, **valores)
+
+
+def test_none_significa_ningun_origen_cruzado():
+    assert _produccion().cors_origins == []
+
+
+def test_produccion_arranca_con_cors_none():
+    _produccion().assert_production_ready()
+
+
+def test_produccion_no_arranca_con_los_origenes_de_desarrollo():
+    """Lambda descarta las variables vacías: con API_CORS_ORIGINS="" la API
+    caía en el valor por defecto, localhost con cookies de sesión."""
+    from config import Settings
+
+    desarrollo = Settings.model_fields["api_cors_origins"].default
+    with pytest.raises(RuntimeError, match="orígenes locales"):
+        _produccion(api_cors_origins=desarrollo).assert_production_ready()
