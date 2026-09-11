@@ -1,0 +1,6 @@
+# Emerging Threats - compromised IPs (fixture)
+# Líneas de comentario y basura que el parser tiene que ignorar.
+198.51.100.77
+192.0.2.44
+no-soy-una-ip
+203.0.113.200

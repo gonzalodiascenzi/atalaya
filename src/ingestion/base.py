@@ -20,12 +20,15 @@ La pieza no obvia de este módulo es `SourceFamily`.
 from __future__ import annotations
 
 import hashlib
+import os
 import re
+import tempfile
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+from pathlib import Path
 from typing import Any, Iterable
 
 import httpx
@@ -43,6 +46,8 @@ class SourceFamily(str, Enum):
     ABUSE_CH = "abuse.ch"
     ALIENVAULT = "alienvault"
     CISA = "cisa"
+    PROOFPOINT = "proofpoint"
+    SPAMHAUS = "spamhaus"
     SPIDERFOOT = "spiderfoot"
     INTERNAL = "internal"
 
@@ -54,6 +59,8 @@ class SourceName(str, Enum):
     THREATFOX = "abuse.ch ThreatFox"
     URLHAUS = "abuse.ch URLhaus"
     CISA_KEV = "CISA KEV"
+    EMERGING_THREATS = "Emerging Threats"
+    SPAMHAUS_DROP = "Spamhaus DROP"
 
     @property
     def family(self) -> SourceFamily:
@@ -65,6 +72,8 @@ _FAMILIES: dict[SourceName, SourceFamily] = {
     SourceName.THREATFOX: SourceFamily.ABUSE_CH,
     SourceName.URLHAUS: SourceFamily.ABUSE_CH,
     SourceName.CISA_KEV: SourceFamily.CISA,
+    SourceName.EMERGING_THREATS: SourceFamily.PROOFPOINT,
+    SourceName.SPAMHAUS_DROP: SourceFamily.SPAMHAUS,
 }
 
 
@@ -242,6 +251,37 @@ class Connector(ABC):
             )
         return res
 
+    def _conditional_get(self, url: str, cache_dir: Path, nombre: str) -> str | None:
+        """GET con caché condicional. Devuelve el cuerpo, o None si no cambió.
+
+        Se mandan If-None-Match e If-Modified-Since: hay servidores que honran
+        uno y no el otro (el CDN de CISA ignora el ETag y sólo respeta la
+        fecha). Descargar varios megabytes cada quince minutos para recibir
+        exactamente lo mismo es la forma más rápida de que una fuente gratuita
+        te limite — abuse.ch ya avisa que corta hasta 72 h por abuso.
+        """
+        cache_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        etag_f = cache_dir / f"{nombre}.etag"
+        mod_f = cache_dir / f"{nombre}.last-modified"
+        body_f = cache_dir / f"{nombre}.body"
+
+        cabeceras: dict[str, str] = {}
+        if etag_f.exists():
+            cabeceras["If-None-Match"] = etag_f.read_text().strip()
+        if mod_f.exists():
+            cabeceras["If-Modified-Since"] = mod_f.read_text().strip()
+
+        res = self._request("GET", url, headers=cabeceras)
+        if res.status_code == 304:
+            return body_f.read_text(encoding="utf-8") if body_f.exists() else None
+
+        if etag := res.headers.get("ETag"):
+            etag_f.write_text(etag)
+        if modificado := res.headers.get("Last-Modified"):
+            mod_f.write_text(modificado)
+        body_f.write_text(res.text, encoding="utf-8")
+        return res.text
+
     def close(self) -> None:
         self._client.close()
 
@@ -291,3 +331,15 @@ def mission_id_for(fingerprint: str) -> str:
     misión existente, no crear una nueva cada quince minutos.
     """
     return "MSN-" + hashlib.sha256(fingerprint.encode()).hexdigest()[:8].upper()
+
+
+def cache_dir() -> Path:
+    """Directorio de caché de la ingesta.
+
+    Nada de "/tmp/..." fijo: en una máquina compartida, un directorio
+    predecible bajo /tmp es un punto clásico de ataque por enlace simbólico.
+    """
+    base = os.getenv("INGEST_CACHE_DIR") or os.path.join(
+        os.getenv("XDG_CACHE_HOME") or tempfile.gettempdir(), "atalaya-cti"
+    )
+    return Path(base)

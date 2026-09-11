@@ -86,7 +86,7 @@ la califica; eso determina también **cuándo**.
 | Origen | Qué la hace verdad | Calificación |
 |---|---|---|
 | `KEV` | Estar en el catálogo de CISA es, por definición, explotación activa observada. No es opinión | Inmediata |
-| `MULTI_SOURCE` | N fuentes independientes coinciden (ThreatFox + URLhaus + MalwareBazaar) | Inmediata |
+| `MULTI_SOURCE` | 2 **operadores** independientes coinciden (ej: ThreatFox + Spamhaus DROP) | Inmediata |
 | `CORROBORATION` | **Diferida**: se toma el IoC cuando todavía es ambiguo y se ve qué pasa en las próximas 72 h | A las 72 h |
 | `CURATED` | Un instructor escribió la respuesta | Inmediata |
 | `PEER` | Consenso ponderado por rango, sólo para lo genuinamente ambiguo | Al haber quórum |
@@ -101,7 +101,7 @@ T+0h    ThreatFox reporta 198.51.100.42 · confidence 50 · una sola fuente
         → entra al feed como misión AMBIGUA
         → el analista apuesta: "70% malicioso, el ASN es sospechoso"
 
-T+72h   URLhaus y MalwareBazaar corroboran · 3 fuentes independientes
+T+72h   Emerging Threats (Proofpoint) la reporta · 2 operadores independientes
         → verdad de referencia: MALICIOUS
         → se califica el veredicto emitido a T+0, con lo que se sabía a T+0
 ```
@@ -176,7 +176,9 @@ Por eso este documento va antes que la Etapa 4.
 | Brier sobre confianza declarada | Acierto/error binario | El binario premia adivinar y no distingue al calibrado del afortunado |
 | `xp = base × (1 − 2·brier)` | Sólo XP positiva | Sin costo por equivocarse con certeza, la certeza es gratis |
 | Corroboración a 72 h | 24 h | 24 h deja fuera campañas que tardan en propagarse entre feeds |
-| 3 fuentes independientes | 2 | Dos feeds que se copian entre sí no son dos fuentes |
+| **2 operadores** independientes | 3 (el valor original) | Medido con datos reales: 287 IPs de ThreatFox caen en rangos Spamhaus DROP, pero sólo 2 aparecen en las tres fuentes. Con umbral 3 casi nada se resolvía. El riesgo de "dos feeds que se copian" lo neutraliza el conteo por operador |
+| No crear misiones de tipos no corroborables | Crearlas y dejarlas vencer | Con las fuentes sin cuenta, hashes y dominios sólo los reporta abuse.ch: el analista apostaría sin recibir respuesta jamás |
+| Mezcla balanceada KEV / corroboradas / ambiguas | Ordenar por solidez | Ordenando, el KEV —todo malicioso— ocupaba todo, y "decir siempre malicioso" ganaba |
 | Calibración como requisito de rango | Sólo XP | Sin esto, la constancia sola llega a Cazador |
 | Un veredicto, sin edición | Permitir corregir | Corregir después de saber el resultado no es análisis |
 

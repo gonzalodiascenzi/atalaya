@@ -415,13 +415,18 @@ pasarían verdes probando otra cosa.
 
 ## 📡 Ingesta
 
-Tres conectores contra fuentes OSINT reales. Cada uno aporta algo distinto:
+Conectores contra fuentes OSINT reales. **Ninguna exige cuenta**, salvo OTX:
 
-| Fuente | Qué aporta | Credencial |
-|---|---|---|
-| **CISA KEV** | Verdad de referencia **dura**: explotación activa observada, no inferida | ninguna, es público |
-| **abuse.ch ThreatFox** | IoCs de C2 con familia de malware asociada | `ABUSECH_AUTH_KEY` |
-| **AlienVault OTX** | Contexto narrativo: campañas, familias, técnicas ATT&CK | `OTX_API_KEY` |
+| Fuente | Operador | Qué aporta | Credencial |
+|---|---|---|---|
+| **CISA KEV** | CISA | Verdad **dura**: explotación activa observada | ninguna |
+| **ThreatFox** (export público) | abuse.ch | IoCs con familia de malware y confianza variable | ninguna |
+| **Emerging Threats** | Proofpoint | IPs comprometidas: un operador **independiente** | ninguna |
+| **Spamhaus DROP** | Spamhaus | Corrobora IPs que caen en rangos secuestrados | ninguna |
+| AlienVault OTX | AlienVault | Contexto de campañas; habilita hashes y dominios | `OTX_API_KEY` |
+
+ThreatFox se lee desde su **export público** y no desde la API: la API exige una
+Auth-Key, y abuse.ch ya no da alta con correo. El export trae los mismos campos.
 
 ```bash
 make ingest-dry        # consulta y muestra, sin escribir nada
@@ -430,8 +435,14 @@ make ingest-resolve    # cierra la corroboración vencida
 make ingest-loop       # ciclo continuo (perfil docker `ingesta`)
 ```
 
-Sin credenciales, cada conector **avisa y se saltea**. CISA KEV no necesita
-ninguna, así que el sistema produce misiones reales desde el primer minuto.
+Sin la clave de OTX, ese conector **avisa y se saltea**; el resto funciona igual.
+
+### No se crean misiones que no se puedan calificar
+
+Un tipo de indicador sólo genera misiones si hay **2 operadores activos** que
+puedan reportarlo. Hoy, sin OTX, hashes y dominios sólo los reporta abuse.ch:
+nunca alcanzarían el umbral, y el analista apostaría sin recibir respuesta. Se
+descartan. Al sumar la clave de OTX, pasan a ser calificables sin tocar código.
 
 ### Contar operadores, no APIs
 
@@ -453,9 +464,9 @@ T+0h    Una sola fuente reporta el IoC · confianza 55
         → entra AMBIGUA · el analista apuesta a ciegas
 
 T+72h   ¿Cuántos OPERADORES distintos terminaron corroborando?
-        ≥ 3            → MALICIOUS  · se califican los veredictos
+        ≥ 2 operadores → MALICIOUS  · se califican los veredictos
         1, baja conf.  → BENIGN     · nadie más lo vio: era ruido
-        2             → sin resolver · la misión expira sin calificar
+        1, conf. alta  → sin resolver · expira sin calificar
 ```
 
 El tercer caso importa tanto como los otros dos: **no se inventa una verdad
@@ -732,7 +743,7 @@ atalaya/
 │   ├── ingestion/
 │   │   ├── misp_stix_connector.py   # STIX 2.1 puro, sin dependencias
 │   │   ├── base.py          # contrato común · SourceFamily
-│   │   ├── sources/         # cisa_kev · threatfox · otx
+│   │   ├── sources/         # cisa_kev · threatfox · emerging_threats · spamhaus_drop · otx
 │   │   ├── normalize.py     # indicador crudo → misión
 │   │   └── run.py           # orquestador CLI
 │   └── frontend/            # Next.js 15
@@ -743,7 +754,7 @@ atalaya/
 ├── 📚 docs/
 │   ├── VERIFICACION.md      # ← el diseño que define el producto
 │   └── ARQUITECTURA.md
-└── 🧪 tests/                # 130 backend + 204 frontend
+└── 🧪 tests/                # 139 backend + 205 frontend
 ```
 
 ---
@@ -759,7 +770,7 @@ atalaya/
 - [x] Persistencia en PostgreSQL con progresión derivada de eventos
 - [x] Bucle de verificación con puntuación por calibración (Brier)
 - [x] Autenticación con JWT + refresh rotativo y roles
-- [x] Conectores reales de CISA KEV, ThreatFox y OTX con corroboración entre operadores
+- [x] Fuentes sin cuenta: CISA KEV, ThreatFox (export), Emerging Threats y Spamhaus DROP
 - [x] Interfaz del veredicto con vista previa de pagos y panel de calibración
 - [ ] 🟡 Sincronización bidireccional OpenCTI ↔ MISP
 - [ ] 🟢 Modo competitivo por equipos (CTF con multiplicador ×2)

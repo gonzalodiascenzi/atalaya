@@ -31,7 +31,13 @@ from base import (
     mission_id_for,
 )
 from normalize import build_mission, derive_severity, missions_from
-from sources import CisaKevConnector, OtxConnector, ThreatFoxConnector
+from sources import (
+    CisaKevConnector,
+    EmergingThreatsConnector,
+    OtxConnector,
+    SpamhausDropConnector,
+    ThreatFoxConnector,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -194,37 +200,125 @@ def test_cisa_kev_usa_la_copia_local_ante_un_304(tmp_path):
     assert len(c.fetch(limit=10)) >= 1, "un 304 debe servirse de la caché"
 
 
-def test_threatfox_normaliza_y_limpia(monkeypatch):
-    monkeypatch.setenv("ABUSECH_AUTH_KEY", "clave-de-prueba")
-    c = ThreatFoxConnector(client=cliente_falso(cargar("threatfox.json")))
-    indicadores = c.fetch(limit=10)
-
+def test_threatfox_normaliza_el_export_publico():
+    """El export trae los mismos datos que la API, sin credencial."""
+    c = ThreatFoxConnector(client=cliente_falso({}))
+    indicadores = c.parse(cargar("threatfox_export.json"), limit=10)
     por_valor = {i.value: i for i in indicadores}
+
     # El puerto no es parte del observable en STIX: dejarlo rompería el
-    # cruce con una fuente que reporte la misma IP sin puerto.
+    # cruce con Emerging Threats, que reporta la misma IP sin puerto.
     assert "198.51.100.77" in por_valor
     assert not any(":" in i.value for i in indicadores if i.kind is IndicatorKind.IPV4)
 
     akira = por_valor["198.51.100.77"]
     assert akira.malware_family == "Akira"
     assert akira.source_confidence == 100
-    assert akira.sample_available is True
     assert akira.attack_technique == "T1071.001"
+    assert akira.source.family is SourceFamily.ABUSE_CH
 
 
-def test_threatfox_sin_credencial_avisa_y_no_explota():
+def test_threatfox_descarta_lo_viejo():
+    """El export arrastra IoCs de 2021: C2 que se apagó hace años no entrena."""
+    c = ThreatFoxConnector(client=cliente_falso({}))
+    valores = {i.value for i in c.parse(cargar("threatfox_export.json"), limit=10)}
+    assert "203.0.113.9" not in valores
+
+
+def test_threatfox_ya_no_necesita_credencial():
+    """El motivo del cambio: abuse.ch ya no da alta con correo."""
+    assert ThreatFoxConnector.requires_env is None
+    ThreatFoxConnector(client=cliente_falso({})).check_credentials({})
+
+
+def test_otx_sin_credencial_avisa_y_no_explota():
     """Falta de credencial es configuración, no una falla del sistema."""
     with pytest.raises(ConnectorDisabled) as exc:
-        ThreatFoxConnector(client=cliente_falso({})).check_credentials({})
-    assert "ABUSECH_AUTH_KEY" in str(exc.value)
+        OtxConnector(client=cliente_falso({})).check_credentials({})
+    assert "OTX_API_KEY" in str(exc.value)
 
 
 def test_placeholder_del_env_cuenta_como_sin_credencial():
     """`.env` trae PENDIENTE__... y eso NO es una clave."""
     with pytest.raises(ConnectorDisabled):
-        ThreatFoxConnector(client=cliente_falso({})).check_credentials(
-            {"ABUSECH_AUTH_KEY": "PENDIENTE__registrarse_en_auth_abuse_ch"}
+        OtxConnector(client=cliente_falso({})).check_credentials(
+            {"OTX_API_KEY": "PENDIENTE__crear_cuenta_en_otx_alienvault_com"}
         )
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  Emerging Threats y Spamhaus DROP
+# ══════════════════════════════════════════════════════════════════════
+
+
+def test_emerging_threats_es_otro_operador():
+    """Lo que aporta ET no es contexto: es un operador distinto de abuse.ch."""
+    c = EmergingThreatsConnector(client=cliente_falso({}))
+    ips = c.parse((FIXTURES / "emerging_threats.txt").read_text(), limit=50)
+    assert [i.value for i in ips] == ["198.51.100.77", "192.0.2.44", "203.0.113.200"]
+    assert all(i.source.family is SourceFamily.PROOFPOINT for i in ips)
+
+
+def test_emerging_threats_ignora_lo_que_no_es_ip():
+    c = EmergingThreatsConnector(client=cliente_falso({}))
+    valores = {i.value for i in c.parse("# comentario\nbasura\n\n1.2.3.4\n", limit=10)}
+    assert valores == {"1.2.3.4"}
+
+
+def test_spamhaus_corrobora_solo_lo_que_cae_en_sus_rangos():
+    drop = SpamhausDropConnector(client=cliente_falso({}))
+    assert drop.load((FIXTURES / "spamhaus_drop.json").read_text()) == 2
+
+    avistamientos = drop.corroborate(["198.51.100.77", "203.0.113.200", "192.0.2.44"])
+    valores = {a.value for a in avistamientos}
+    assert "198.51.100.77" in valores  # dentro de 198.51.100.0/24
+    assert "203.0.113.200" not in valores  # 203.0.113.0/25 termina en .127
+    assert "192.0.2.44" not in valores
+    assert all(a.source.family is SourceFamily.SPAMHAUS for a in avistamientos)
+
+
+def test_spamhaus_no_genera_misiones_propias():
+    """DROP lista rangos, no IoCs: por sí solo no dice nada de una IP puntual."""
+    assert SpamhausDropConnector(client=cliente_falso({})).fetch(100) == []
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  Qué se puede calificar
+# ══════════════════════════════════════════════════════════════════════
+
+
+def test_sin_otx_sólo_las_ips_son_calificables():
+    """Hashes y dominios sólo los reporta abuse.ch: nunca alcanzarían el umbral."""
+    import run
+
+    activas = {
+        SourceName.CISA_KEV,
+        SourceName.THREATFOX,
+        SourceName.EMERGING_THREATS,
+        SourceName.SPAMHAUS_DROP,
+    }
+    tipos = run.corroborable_kinds(activas)
+    assert IndicatorKind.IPV4 in tipos
+    assert IndicatorKind.DOMAIN not in tipos
+    assert IndicatorKind.SHA256 not in tipos
+
+
+def test_con_otx_los_dominios_pasan_a_ser_calificables():
+    """Sumar un operador que reporta dominios los habilita, sin tocar código."""
+    import run
+
+    tipos = run.corroborable_kinds({SourceName.THREATFOX, SourceName.OTX})
+    assert IndicatorKind.DOMAIN in tipos
+    assert IndicatorKind.SHA256 in tipos
+
+
+def test_dos_apis_de_abuse_ch_no_habilitan_nada():
+    """ThreatFox + URLhaus = un solo operador: no alcanza para calificar URLs."""
+    import run
+
+    assert IndicatorKind.URL not in run.corroborable_kinds(
+        {SourceName.THREATFOX, SourceName.URLHAUS}
+    )
 
 
 def test_otx_hereda_el_contexto_del_pulso(monkeypatch):
@@ -260,17 +354,17 @@ def test_una_sola_fuente_de_baja_confianza_entra_ambigua():
     assert "todavía NO alcanza el umbral" in m["briefing"]
 
 
-def test_tres_operadores_independientes_dan_verdad():
+def test_dos_operadores_independientes_dan_verdad():
+    """El umbral es 2 desde que hay datos reales: ver scoring.py."""
     m = build_mission(
         [
-            indicador("1.2.3.4", SourceName.OTX),
             indicador("1.2.3.4", SourceName.THREATFOX),
-            indicador("1.2.3.4", SourceName.CISA_KEV),
+            indicador("1.2.3.4", SourceName.EMERGING_THREATS),
         ]
     )
     assert m["ground_truth"] == "MALICIOUS"
     assert m["truth_source"] == "MULTI_SOURCE"
-    assert m["independent_sources"] == 3
+    assert m["independent_sources"] == 2
 
 
 def test_tres_apis_del_mismo_operador_no_alcanzan():
@@ -314,8 +408,12 @@ def test_el_bundle_stix_de_la_mision_es_valido():
     assert errores == [], errores
 
 
-def test_las_misiones_salen_ordenadas_por_solidez():
-    """Lo mejor corroborado primero: es lo que más enseña."""
+def test_la_mezcla_de_misiones_es_balanceada():
+    """Ni todo KEV ni todo ambiguo: un turno de cada categoría.
+
+    Ordenar sólo por solidez hacía que el KEV —todo malicioso— ocupara todos
+    los lugares, y "decir siempre malicioso" ganaba siempre.
+    """
     misiones = missions_from(
         [
             indicador("1.1.1.1", SourceName.OTX, confianza=40),
@@ -423,6 +521,7 @@ def test_la_corroboracion_se_acumula_entre_corridas(migrated_database):
 
     # OTX + (ThreatFox y URLhaus, que son abuse.ch) = 2 operadores, no 3.
     assert _correr(contar) == 2
+    # Y con el umbral en 2, eso ya es corroboración.
 
 
 def test_la_ventana_vencida_resuelve_a_favor_si_hubo_corroboracion(migrated_database):
@@ -478,14 +577,14 @@ def test_sin_corroboracion_y_baja_confianza_se_resuelve_BENIGNO(migrated_databas
 
 
 def test_evidencia_a_mitad_de_camino_NO_se_inventa_una_verdad(migrated_database):
-    """Dos operadores con el umbral en tres: queda sin resolver.
+    """Un solo operador, con confianza alta: queda sin resolver.
 
-    Inventar una verdad para poder puntuar sería peor que no puntuar: le
-    enseñaría al analista una lección falsa.
+    No alcanza para corroborar (hace falta otro operador) y tampoco para
+    darlo por ruido (la fuente está segura). Inventar una verdad para poder
+    puntuar le enseñaría al analista una lección falsa: expira sin calificar.
     """
     ip = "45.77.10.204"
-    _ingerir([indicador(ip, SourceName.OTX, confianza=80)])
-    _ingerir([indicador(ip, SourceName.THREATFOX, confianza=80)])
+    _ingerir([indicador(ip, SourceName.OTX, confianza=85)])
     mission_id = mission_id_for(f"ipv4-addr:{ip}")
 
     async def vencer_y_resolver(session):

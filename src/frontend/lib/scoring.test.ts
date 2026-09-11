@@ -7,8 +7,10 @@
  */
 import { describe, expect, it } from 'vitest';
 import tabla from './__fixtures__/payoff_table.json';
+import umbral from './__fixtures__/threshold.json';
 import {
   brierScore,
+  CORROBORATION_THRESHOLD,
   describeOverconfidence,
   payoff,
   requiresRationale,
@@ -88,5 +90,13 @@ describe('lectura de la sobreconfianza', () => {
     [-0.3, 'subestimás tu criterio'],
   ])('%s → "%s…"', (oc, fragmento) => {
     expect(describeOverconfidence(oc)).toContain(fragmento);
+  });
+});
+
+describe('umbral de corroboración', () => {
+  it('coincide con el de Python', () => {
+    // Si alguien cambia el umbral de un lado, la tarjeta diría "1 de 3"
+    // mientras el servidor califica con 2.
+    expect(CORROBORATION_THRESHOLD).toBe(umbral.CORROBORATION_THRESHOLD);
   });
 });

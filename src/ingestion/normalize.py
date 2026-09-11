@@ -329,21 +329,48 @@ def _stix_objects(
 def missions_from(
     indicadores: list[RawIndicator], max_missions: int = 50
 ) -> list[dict[str, Any]]:
-    """Agrupa por huella y produce misiones, las más corroboradas primero."""
+    """Agrupa por huella y arma una mezcla BALANCEADA de misiones.
+
+    Ordenar sólo por solidez hacía que el KEV —verdad dura, todo malicioso—
+    ocupara todos los lugares, y con eso "decir siempre malicioso" ganaba
+    siempre. Se reparte entre tres categorías, que son tres ejercicios
+    distintos:
+
+      · KEV            → verdad inmediata: ¿sabés buscar la fuente?
+      · corroboradas   → dos operadores coinciden: verdad conocida
+      · ambiguas       → un solo operador: se apuesta a ciegas y el tiempo
+                         califica — el corazón pedagógico del sistema
+    """
     from base import deduplicate
 
-    misiones = []
+    categorias: dict[str, list[dict[str, Any]]] = {
+        "kev": [],
+        "corroborada": [],
+        "ambigua": [],
+    }
     for grupo in deduplicate(indicadores).values():
         mision = build_mission(grupo)
-        if mision is not None:
-            misiones.append(mision)
+        if mision is None:
+            continue
+        if mision["kev_listed"]:
+            categorias["kev"].append(mision)
+        elif mision["ground_truth"] != "UNKNOWN":
+            categorias["corroborada"].append(mision)
+        else:
+            categorias["ambigua"].append(mision)
 
-    misiones.sort(
-        key=lambda m: (
-            m["kev_listed"],
-            m["independent_sources"],
-            m["source_confidence"],
-        ),
-        reverse=True,
-    )
-    return misiones[:max_missions]
+    for lista in categorias.values():
+        lista.sort(
+            key=lambda m: (m["independent_sources"], m["source_confidence"]),
+            reverse=True,
+        )
+
+    # Reparto por turnos: una de cada categoría mientras haya. Si una se
+    # agota, las otras siguen llenando los lugares libres.
+    salida: list[dict[str, Any]] = []
+    colas = [categorias["kev"], categorias["corroborada"], categorias["ambigua"]]
+    while len(salida) < max_missions and any(colas):
+        for cola in colas:
+            if cola and len(salida) < max_missions:
+                salida.append(cola.pop(0))
+    return salida

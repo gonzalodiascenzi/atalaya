@@ -31,9 +31,66 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "api"))
 
-from base import ConnectorDisabled, ConnectorError, RawIndicator  # noqa: E402
+from base import (  # noqa: E402
+    ConnectorDisabled,
+    ConnectorError,
+    IndicatorKind,
+    RawIndicator,
+    SourceName,
+)
 from normalize import missions_from  # noqa: E402
-from sources import ALL_CONNECTORS  # noqa: E402
+from scoring import CORROBORATION_THRESHOLD  # noqa: E402
+from sources import ALL_CONNECTORS, SpamhausDropConnector  # noqa: E402
+
+#: Qué tipos de indicador puede reportar cada fuente. Con esto se decide qué
+#: misiones son calificables (ver `corroborable_kinds`).
+TIPOS_POR_FUENTE: dict[SourceName, set[IndicatorKind]] = {
+    SourceName.CISA_KEV: {IndicatorKind.CVE},
+    SourceName.THREATFOX: {
+        IndicatorKind.IPV4,
+        IndicatorKind.DOMAIN,
+        IndicatorKind.URL,
+        IndicatorKind.SHA256,
+        IndicatorKind.MD5,
+    },
+    SourceName.URLHAUS: {IndicatorKind.URL},
+    SourceName.EMERGING_THREATS: {IndicatorKind.IPV4},
+    SourceName.SPAMHAUS_DROP: {IndicatorKind.IPV4},
+    SourceName.OTX: {
+        IndicatorKind.IPV4,
+        IndicatorKind.DOMAIN,
+        IndicatorKind.URL,
+        IndicatorKind.SHA256,
+        IndicatorKind.MD5,
+        IndicatorKind.CVE,
+    },
+}
+
+
+def corroborable_kinds(activas: set[SourceName]) -> set[IndicatorKind]:
+    """Tipos de indicador que ALGUNA VEZ se podrían corroborar.
+
+    Un tipo es corroborable si, entre las fuentes que respondieron en esta
+    corrida, hay al menos CORROBORATION_THRESHOLD operadores DISTINTOS capaces
+    de reportarlo. Si no los hay, una misión de ese tipo nunca alcanzaría el
+    umbral: vencería a las 72 h sin calificar y el analista habría apostado
+    para nada.
+
+    Con las fuentes sin cuenta de hoy, los hashes y los dominios sólo los
+    reporta abuse.ch: no se crean misiones de esos tipos. Cuando se sume la
+    clave de OTX (otro operador que sí los reporta), pasan a ser calificables
+    solos, sin tocar este código.
+    """
+    familias_por_tipo: dict[IndicatorKind, set] = {}
+    for fuente in activas:
+        for tipo in TIPOS_POR_FUENTE.get(fuente, set()):
+            familias_por_tipo.setdefault(tipo, set()).add(fuente.family)
+    return {
+        t
+        for t, fams in familias_por_tipo.items()
+        if len(fams) >= CORROBORATION_THRESHOLD
+    }
+
 
 logging.basicConfig(
     level=getattr(logging, os.getenv("CONNECTOR_LOG_LEVEL", "INFO").upper(), 20),
@@ -45,9 +102,15 @@ log = logging.getLogger("atalaya.ingesta")
 def recolectar(
     limite_por_fuente: int, solo: str | None = None
 ) -> tuple[list[RawIndicator], dict[str, str]]:
-    """Consulta todas las fuentes disponibles. Nunca aborta por una sola."""
+    """Consulta todas las fuentes disponibles. Nunca aborta por una sola.
+
+    Después de las fuentes que generan misiones, Spamhaus DROP corrobora las
+    IPs que trajeron, y se descartan los tipos de indicador que no se podrían
+    calificar nunca con las fuentes que respondieron.
+    """
     indicadores: list[RawIndicator] = []
     estado: dict[str, str] = {}
+    activas: set[SourceName] = set()
 
     for cls in ALL_CONNECTORS:
         clave = cls.__name__.replace("Connector", "").lower()
@@ -58,6 +121,7 @@ def recolectar(
         try:
             lote = conector.fetch(limite_por_fuente)
             indicadores.extend(lote)
+            activas.add(conector.name)
             estado[conector.name.value] = f"✓ {len(lote)} indicadores"
             log.info("%s · %d indicadores", conector.name.value, len(lote))
         except ConnectorDisabled as exc:
@@ -73,6 +137,34 @@ def recolectar(
         finally:
             conector.close()
 
+    # ── Spamhaus DROP: corrobora, no genera ──────────────────────────
+    ips = [i.value for i in indicadores if i.kind is IndicatorKind.IPV4]
+    if ips and not solo:
+        drop = SpamhausDropConnector()
+        try:
+            rangos = drop.load()
+            corroboraciones = drop.corroborate(ips)
+            indicadores.extend(corroboraciones)
+            activas.add(drop.name)
+            estado[drop.name.value] = (
+                f"✓ {rangos} rangos · corrobora {len(corroboraciones)} IPs"
+            )
+        except (ConnectorError, Exception) as exc:  # noqa: BLE001
+            estado[drop.name.value] = f"✗ {exc}"
+            log.error("Spamhaus DROP: %s", exc)
+        finally:
+            drop.close()
+
+    # ── Descarte de lo que nunca se podría calificar ─────────────────
+    calificables = corroborable_kinds(activas)
+    antes = len(indicadores)
+    indicadores = [i for i in indicadores if i.kev_listed or i.kind in calificables]
+    descartados = antes - len(indicadores)
+    if descartados:
+        estado["(no calificables)"] = (
+            f"○ {descartados} descartados: su tipo no tiene {CORROBORATION_THRESHOLD} "
+            "operadores que lo puedan corroborar"
+        )
     return indicadores, estado
 
 
@@ -236,7 +328,10 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _ciclo(args) -> int:
-    crudos, estado = recolectar(args.limit, args.source)
+    # Las fuentes de volcado se descargan enteras de todos modos: se parsea
+    # un lote amplio y el tope de verdad se aplica sobre las misiones, que es
+    # donde se balancean las categorías.
+    crudos, estado = recolectar(max(args.limit * 10, 1000), args.source)
     if not crudos:
         log.warning(
             "Ninguna fuente devolvió indicadores. Revisá las credenciales en .env "

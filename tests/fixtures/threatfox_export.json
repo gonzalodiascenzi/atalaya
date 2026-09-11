@@ -1,0 +1,38 @@
+{
+  "1500001": [
+    {
+      "ioc_value": "198.51.100.77:443",
+      "ioc_type": "ip:port",
+      "threat_type": "botnet_cc",
+      "malware_printable": "Akira",
+      "confidence_level": 100,
+      "first_seen_utc": "2026-09-10 23:59:19",
+      "reference": "https://threatfox.abuse.ch/ioc/1500001/",
+      "tags": "akira,c2"
+    }
+  ],
+  "1500002": [
+    {
+      "ioc_value": "panel-update.example",
+      "ioc_type": "domain",
+      "threat_type": "payload_delivery",
+      "malware_printable": "Lumma Stealer",
+      "confidence_level": 50,
+      "first_seen_utc": "2026-09-09 23:59:19",
+      "reference": null,
+      "tags": null
+    }
+  ],
+  "1500003": [
+    {
+      "ioc_value": "203.0.113.9:8080",
+      "ioc_type": "ip:port",
+      "threat_type": "botnet_cc",
+      "malware_printable": "Viejo",
+      "confidence_level": 75,
+      "first_seen_utc": "2021-04-02 07:30:34",
+      "reference": null,
+      "tags": null
+    }
+  ]
+}

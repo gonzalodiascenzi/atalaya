@@ -165,7 +165,7 @@ describe('VerdictPanel', () => {
     montar(
       mision({
         awaiting_corroboration: true,
-        independent_sources: 2,
+        independent_sources: 1,
         my_verdict: {
           call: 'BENIGN',
           confidence: 60,
@@ -176,7 +176,7 @@ describe('VerdictPanel', () => {
         },
       }),
     );
-    expect(screen.getByTestId('veredicto-sellado')).toHaveTextContent('2 de 3 operadores');
+    expect(screen.getByTestId('veredicto-sellado')).toHaveTextContent('1 de 2 operadores');
   });
 
   it('sin sesión no ofrece el formulario', () => {

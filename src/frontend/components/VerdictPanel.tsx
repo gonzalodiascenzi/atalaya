@@ -14,6 +14,7 @@
 import { useMemo, useState } from 'react';
 import { ApiRejection, submitVerdict, UnauthorizedError } from '@/lib/api';
 import {
+  CORROBORATION_THRESHOLD,
   MAX_CONFIDENCE,
   MIN_CONFIDENCE,
   payoff,
@@ -260,7 +261,8 @@ function VeredictoEmitido({ veredicto, mission }: { veredicto: MyVerdict; missio
         <span className="text-phosphor">{nombre} al {veredicto.confidence}%</span>
         <p className="mt-1 text-2xs text-phosphor-faint">
           Se califica cuando las fuentes corroboren
-          {mission.independent_sources > 0 && ` (hoy: ${mission.independent_sources} de 3 operadores)`}.
+          {mission.independent_sources > 0 &&
+            ` (hoy: ${mission.independent_sources} de ${CORROBORATION_THRESHOLD} operadores)`}.
           El tiempo te va a dar o quitar la razón.
         </p>
       </div>

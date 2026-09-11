@@ -56,9 +56,23 @@ MAX_CONFIDENCE = 100
 #: no es análisis: es una corazonada con buena presentación.
 RATIONALE_REQUIRED_AT = 80
 
-#: Fuentes independientes necesarias para dar por corroborado un indicador.
-#: Dos feeds que se copian entre sí no son dos fuentes.
-CORROBORATION_THRESHOLD = 3
+#: Operadores independientes necesarios para dar por corroborado un indicador.
+#:
+#: Era 3. Se bajó a 2 con datos reales en la mano (septiembre 2026):
+#:
+#:   · IPs de ThreatFox que también reporta Emerging Threats ......   2
+#:   · IPs de ThreatFox dentro de rangos Spamhaus DROP ............ 287
+#:   · IPs presentes en las TRES fuentes ..........................   2
+#:
+#: Con fuentes gratuitas, tres operadores coincidiendo es prácticamente
+#: inalcanzable: con umbral 3 casi ninguna misión se resolvía nunca, y el
+#: analista apostaba sin recibir respuesta jamás.
+#:
+#: El argumento original para 3 era "dos feeds que se copian entre sí no son
+#: dos fuentes". Ese riesgo ya lo neutraliza el conteo por FAMILIA de operador
+#: (ver ingestion/base.py): ThreatFox y URLhaus son abuse.ch y cuentan como uno.
+#: Dos familias distintas son dos organizaciones que no se copian.
+CORROBORATION_THRESHOLD = 2
 
 #: Ventana de corroboración. 24 h deja afuera campañas que tardan en
 #: propagarse entre feeds; 72 h es el punto donde la señal ya se estabilizó.

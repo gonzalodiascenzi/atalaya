@@ -19,6 +19,15 @@ export const MAX_CONFIDENCE = 100;
 export const RATIONALE_REQUIRED_AT = 80;
 
 /**
+ * Operadores independientes para dar un indicador por corroborado. Espejo de
+ * `CORROBORATION_THRESHOLD` en scoring.py — era 3 y bajó a 2 con datos reales:
+ * con fuentes gratuitas, tres operadores coincidiendo casi nunca ocurre. Antes
+ * este número estaba escrito a mano en dos componentes; el test de paridad
+ * atrapa si vuelven a divergir.
+ */
+export const CORROBORATION_THRESHOLD = 2;
+
+/**
  * Pendiente de la conversión Brier → XP. El 4 es el único valor que hace que
  * declarar 50% pague exactamente 0: `1 − 4·0.25 = 0`. Ver scoring.py.
  */

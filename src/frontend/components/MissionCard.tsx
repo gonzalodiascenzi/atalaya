@@ -10,6 +10,7 @@
 
 import { useState } from 'react';
 import VerdictPanel from '@/components/VerdictPanel';
+import { CORROBORATION_THRESHOLD } from '@/lib/scoring';
 import { SEVERITY_STYLE, type Mission, type VerdictResult } from '@/lib/types';
 
 interface Props {
@@ -151,9 +152,9 @@ export default function MissionCard({
           {mission.awaiting_corroboration ? (
             <span
               className="chip border-neon-amber/40 bg-neon-amber/5 text-neon-amber"
-              title="Operadores independientes que lo reportaron. Con 3 se da por corroborado."
+              title={`Operadores independientes que lo reportaron. Con ${CORROBORATION_THRESHOLD} se da por corroborado.`}
             >
-              ◷ {mission.independent_sources}/3 fuentes
+              ◷ {mission.independent_sources}/{CORROBORATION_THRESHOLD} fuentes
             </span>
           ) : (
             <span className="chip border-neon-green/30 text-neon-green/80">verdad conocida</span>

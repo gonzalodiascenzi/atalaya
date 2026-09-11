@@ -1,33 +1,40 @@
 """
-ATALAYA // abuse.ch ThreatFox.
+ATALAYA // abuse.ch ThreatFox — export público.
 
-IoCs de mando y control con familia de malware asociada, que es justamente
-lo que hace entrenable una misión: no un "IP mala" suelto, sino "esta IP es
-el C2 de esta familia".
+IoCs de mando y control con familia de malware asociada, que es justamente lo
+que hace entrenable una misión: no "IP mala" suelta, sino "esta IP es el C2 de
+esta familia".
 
-Desde 2024 abuse.ch exige una Auth-Key aunque el servicio siga siendo
-gratuito. Se saca de https://auth.abuse.ch/ y va en ABUSECH_AUTH_KEY.
+Se usa el EXPORT PÚBLICO y no la API. La API exige una Auth-Key, y abuse.ch
+dejó de ofrecer alta con correo: sólo se entra con una cuenta de X, Google,
+LinkedIn o GitHub, algo que no siempre se puede. El export trae los mismos
+campos —familia, confianza, primera aparición, etiquetas— sin credencial
+alguna. Verificado contra el servidor real: ~11.800 IoCs por descarga.
+
+Pesa ~7 MB. Por eso va con petición condicional: si no cambió desde la
+última corrida, no se transfiere nada.
 
 OJO con la independencia: ThreatFox, URLhaus y MalwareBazaar son del MISMO
-operador. Comparten `SourceFamily.ABUSE_CH` para que un indicador presente
-en las tres cuente como UNA corroboración, no como tres.
+operador (`SourceFamily.ABUSE_CH`). Un indicador en las tres cuenta como UNA
+corroboración, no como tres.
 """
 
 from __future__ import annotations
 
-import os
+import json
+from datetime import datetime, timedelta, timezone
 
 from base import (
     Connector,
     IndicatorKind,
     RawIndicator,
     SourceName,
+    cache_dir,
     parse_timestamp,
 )
 
-THREATFOX_URL = "https://threatfox-api.abuse.ch/api/v1/"
+EXPORT_URL = "https://threatfox.abuse.ch/export/json/recent/"
 
-#: Traducción del vocabulario de ThreatFox al nuestro.
 _TIPOS = {
     "ip:port": IndicatorKind.IPV4,
     "domain": IndicatorKind.DOMAIN,
@@ -36,73 +43,87 @@ _TIPOS = {
     "md5_hash": IndicatorKind.MD5,
 }
 
-#: Técnica ATT&CK inferida del tipo de amenaza que declara la fuente.
 _TECNICAS = {
     "botnet_cc": "T1071.001",
     "payload_delivery": "T1105",
     "payload": "T1105",
 }
 
+#: Ventana de recencia. El export arrastra entradas de años atrás; entrenar
+#: sobre infraestructura de C2 que se apagó en 2021 enseña a perseguir
+#: fantasmas.
+RECENCIA_DIAS = 7
+
 
 class ThreatFoxConnector(Connector):
-    """IoCs recientes de ThreatFox."""
+    """IoCs recientes de ThreatFox, sin credencial."""
 
     name = SourceName.THREATFOX
-    requires_env = "ABUSECH_AUTH_KEY"
+    requires_env = None
     min_interval = 1.5
     default_confidence = 50
 
     def fetch(self, limit: int = 100) -> list[RawIndicator]:
-        self.check_credentials(dict(os.environ))
-        clave = os.environ[self.requires_env].strip()
-
-        # `days: 1` acota a lo reciente: un IoC de C2 de hace un mes casi
-        # seguro ya está muerto, y entrenar sobre infraestructura apagada
-        # enseña a perseguir fantasmas.
-        res = self._request(
-            "POST",
-            THREATFOX_URL,
-            headers={"Auth-Key": clave, "Content-Type": "application/json"},
-            json={"query": "get_iocs", "days": 1},
-        )
-        cuerpo = res.json()
-        if cuerpo.get("query_status") != "ok":
+        cuerpo = self._conditional_get(EXPORT_URL, cache_dir(), "threatfox")
+        if not cuerpo:
             return []
+        return self.parse(json.loads(cuerpo), limit)
+
+    def parse(self, datos: dict, limit: int) -> list[RawIndicator]:
+        """Normaliza el export. Separado de fetch() para poder probarlo."""
+        filas = (
+            [f for grupo in datos.values() for f in grupo]
+            if isinstance(datos, dict)
+            else list(datos)
+        )
+        umbral = datetime.now(timezone.utc) - timedelta(days=RECENCIA_DIAS)
+
+        recientes = []
+        for f in filas:
+            visto = parse_timestamp(f.get("first_seen_utc"))
+            if visto >= umbral:
+                recientes.append((visto, f))
+        # Lo más nuevo primero: es lo que todavía puede estar vivo.
+        recientes.sort(key=lambda par: par[0], reverse=True)
 
         indicadores: list[RawIndicator] = []
-        for ioc in (cuerpo.get("data") or [])[:limit]:
-            tipo = _TIPOS.get(ioc.get("ioc_type", ""))
-            if tipo is None:
+        for visto, f in recientes:
+            if len(indicadores) >= limit:
+                break
+            tipo = _TIPOS.get(f.get("ioc_type", ""))
+            valor = (f.get("ioc_value") or "").strip()
+            if tipo is None or not valor:
                 continue
-
-            valor = (ioc.get("ioc") or "").strip()
-            if not valor:
-                continue
-            # ThreatFox entrega "1.2.3.4:8080"; el puerto no es parte del
-            # observable en STIX y rompería la deduplicación entre fuentes.
+            # "1.2.3.4:8080" → el puerto no es parte del observable en STIX y
+            # rompería el cruce con fuentes que reportan la IP sola.
             if tipo is IndicatorKind.IPV4 and ":" in valor:
                 valor = valor.split(":", 1)[0]
 
-            familia = (ioc.get("malware_printable") or "").strip() or None
             indicadores.append(
                 RawIndicator(
                     value=valor,
                     kind=tipo,
                     source=self.name,
-                    source_reference=(
-                        f"https://threatfox.abuse.ch/ioc/{ioc.get('id', '')}/"
-                    ),
+                    source_reference=f.get("reference")
+                    or "https://threatfox.abuse.ch/browse/",
                     source_confidence=int(
-                        ioc.get("confidence_level") or self.default_confidence
+                        f.get("confidence_level") or self.default_confidence
                     ),
-                    first_reported_at=parse_timestamp(ioc.get("first_seen")),
-                    malware_family=familia,
-                    attack_technique=_TECNICAS.get(ioc.get("threat_type", "")),
-                    description=(ioc.get("threat_type_desc") or "").strip() or None,
-                    # Que exista una muestra asociada es corroboración fuerte:
-                    # alguien tiene el binario, no sólo una sospecha.
-                    sample_available=bool(ioc.get("malware_samples")),
-                    tags=tuple(ioc.get("tags") or ())[:6],
+                    first_reported_at=visto,
+                    malware_family=(f.get("malware_printable") or "").strip() or None,
+                    attack_technique=_TECNICAS.get(f.get("threat_type", "")),
+                    description=(
+                        f"{f.get('malware_printable') or 'Malware'}: "
+                        f"{(f.get('threat_type') or 'indicador').replace('_', ' ')}."
+                    ),
+                    # El export no trae la lista de muestras; se usa la
+                    # presencia de un hash como señal de que hay binario.
+                    sample_available=tipo in (IndicatorKind.SHA256, IndicatorKind.MD5),
+                    tags=(
+                        tuple((f.get("tags") or "").split(","))[:6]
+                        if isinstance(f.get("tags"), str)
+                        else tuple(f.get("tags") or ())[:6]
+                    ),
                 )
             )
         return indicadores
