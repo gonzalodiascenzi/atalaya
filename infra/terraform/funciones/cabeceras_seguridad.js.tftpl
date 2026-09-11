@@ -1,0 +1,16 @@
+// ATALAYA // CloudFront Function (viewer-response) en la consola.
+//
+// Pone las cabeceras de seguridad en cada respuesta, venga de la caché o del
+// bucket. Antes lo hacía una "response headers policy" propia, pero el plan
+// Free de CloudFront sólo admite las políticas administradas por AWS, y
+// ninguna trae CSP. Las cabeceras se definen en cdn.tf; Terraform las
+// inyecta acá.
+var CABECERAS = ${cabeceras};
+
+function handler(event) {
+  var headers = event.response.headers;
+  for (var nombre in CABECERAS) {
+    headers[nombre] = { value: CABECERAS[nombre] };
+  }
+  return event.response;
+}

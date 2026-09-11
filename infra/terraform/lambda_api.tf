@@ -40,6 +40,14 @@ data "aws_iam_policy_document" "api" {
     ]
   }
 
+  # Las trazas de X-Ray las escribe el servicio de Lambda con esta identidad.
+  statement {
+    sid       = "TrazasXRay"
+    effect    = "Allow"
+    actions   = ["xray:PutTraceSegments", "xray:PutTelemetryRecords"]
+    resources = ["*"] # X-Ray no admite acotar estas acciones por recurso
+  }
+
   # Descifrar SecureString con la clave administrada aws/ssm, y sólo cuando
   # la llamada llega a través de SSM. Una lectura directa a KMS no pasa.
   statement {
@@ -61,6 +69,11 @@ resource "aws_iam_role_policy" "api" {
   policy = data.aws_iam_policy_document.api.json
 }
 
+# Sin clave KMS propia (trivy AWS-0017): CloudWatch ya cifra los logs en
+# reposo. Una clave propia (USD 1/mes) sirve cuando quien audita o revoca el
+# descifrado es otra persona que quien administra la cuenta; acá es la misma.
+# Y la API no escribe secretos ni contraseñas en los logs.
+#trivy:ignore:AWS-0017
 resource "aws_cloudwatch_log_group" "api" {
   name              = "/aws/lambda/${local.name}-api"
   retention_in_days = var.log_retention_days
@@ -77,6 +90,13 @@ resource "aws_lambda_function" "api" {
 
   memory_size = var.lambda_memory_mb
   timeout     = 30
+
+  # X-Ray: separa el arranque en frío (leer SSM, conectar a Neon) del tiempo
+  # de cada pedido. Lambda muestrea (1 por segundo + 5%) y el nivel gratuito
+  # cubre 100.000 trazas por mes.
+  tracing_config {
+    mode = "Active"
+  }
 
   # SIN concurrencia reservada, a propósito: la cuenta tiene un tope de 10
   # ejecuciones concurrentes y, con ese límite, AWS no deja reservar nada

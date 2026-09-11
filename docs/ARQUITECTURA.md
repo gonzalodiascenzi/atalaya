@@ -153,7 +153,7 @@ flowchart TB
     GH["🐙 GitHub Actions<br/>OIDC · sólo main"]
 
     subgraph AWS["Cuenta AWS · us-east-1"]
-        CF["CloudFront<br/>CSP · HSTS · IP real → x-atalaya-ip"]
+        CF["CloudFront · plan Free<br/>WAF · CSP · HSTS · IP real → x-atalaya-ip"]
         S3[("S3 · consola estática<br/>privado · sólo esta distribución")]
         subgraph LAMBDA["Lambda · se apaga sin tráfico"]
             API["FastAPI + Web Adapter<br/>URL con AWS_IAM"]
@@ -201,11 +201,11 @@ habría sido una degradación silenciosa.
 
 | Pendiente | Impacto | Prioridad |
 |---|---|---|
-| Rate limiting distribuido (hoy es por proceso) | Con N instancias de Lambda hay N contadores | 🟡 Media |
+| Limitador de la API por instancia | El WAF ya limita por IP de forma global; el de la API cuenta por instancia de Lambda y queda como segunda capa | 🟢 Baja |
 | Paginación del feed por desplazamiento, no por clave | Con ingesta concurrente, una misión nueva puede correr la página y repetir una | 🟢 Baja |
 | Proveedor OIDC además de contraseñas locales | Hoy cada quien mantiene una contraseña más | 🟡 Media |
 | Doble token anti-CSRF además de SameSite | SameSite=strict alcanza hoy, pero es una sola capa | 🟢 Baja |
 | Sincronización bidireccional OpenCTI ↔ MISP | Duplicación manual de eventos | 🟢 Baja |
-| Dominio propio + AWS WAF delante de CloudFront | Hoy se sirve en `*.cloudfront.net` sin WAF | 🟡 Media |
-| Logs de acceso de CloudFront | Ante un incidente, sólo están los logs de la Lambda: no se ve lo que CloudFront cortó o sirvió de la consola | 🟡 Media |
+| Dominio propio | Hoy se sirve en `*.cloudfront.net` | 🟢 Baja |
+| Logs de acceso de CloudFront | El plan Free no los incluye (Pro, USD 15/mes). Hoy: logs de la Lambda y pedidos muestreados del WAF | 🟡 Media |
 | Ingesta programada en AWS | Hoy se corre a mano contra Neon | 🟡 Media |

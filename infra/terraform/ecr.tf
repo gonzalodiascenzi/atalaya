@@ -1,5 +1,8 @@
 # ATALAYA // Registro de imágenes.
 
+# Sin clave KMS propia (trivy AWS-0033): la misma imagen es pública en GHCR.
+# Cifrarla con una clave propia no protege nada que no esté ya publicado.
+#trivy:ignore:AWS-0033
 resource "aws_ecr_repository" "api" {
   name = "${var.project_name}-api"
 

@@ -109,7 +109,7 @@ Detalle completo, decisiones de diseño y deuda técnica consciente:
 | 💾 **Persistencia** | PostgreSQL 16 · SQLAlchemy 2.0 async · Alembic | Eventos de XP append-only; la progresión se deriva de ellos |
 | 🖥️ **Frontend** | Next.js 15 · React 19 · Tailwind 3.4 | Consola cyberpunk |
 | 🐳 **Local** | Docker Compose (con perfiles) | 13 servicios, arrancables por partes |
-| ☁️ **Nube** | Terraform 1.10 · AWS | CloudFront + S3 (consola) · Lambda (API) · SSM · Neon (Postgres) |
+| ☁️ **Nube** | Terraform 1.10 · AWS | CloudFront (plan Free + WAF) · S3 · Lambda · SSM · Neon (Postgres) |
 | 🛡️ **CI/CD** | GitHub Actions | 9 puertas: secretos, lint, tests, STIX, IaC, contenedores |
 
 ---
@@ -659,11 +659,18 @@ haber relajado la defensa contra CSRF.
 - **La misma imagen que en Docker Compose.** El Lambda Web Adapter (una capa
   en el `Dockerfile`) traduce los eventos de Lambda a HTTP; la API no se
   enteró de que corre en Lambda.
-- **Costo ≈ $0** con tráfico de demo: Lambda y CloudFront tienen nivel
-  gratuito que no vence, S3 y ECR cuestan centavos, Neon es gratis.
+- **Costo ≈ $0** con tráfico de demo: CloudFront va en el **plan Free de
+  tarifa plana** (USD 0, con WAF incluido y **sin cobro por excedentes**: un
+  ataque no se convierte en factura), Lambda tiene nivel gratuito que no
+  vence, S3 y ECR cuestan centavos, Neon es gratis.
 
 ### Endurecimiento incluido de fábrica
 
+- 🧱 **WAF con 5 reglas** (el máximo del plan Free): tope global por IP,
+  tope estricto para registro y login, reputación de IP, reglas base OWASP y
+  entradas maliciosas (Log4Shell). Las reglas que miran el **cuerpo** sólo
+  cuentan: el fundamento de un veredicto contiene, a propósito, `<script>`,
+  `${jndi:...}` o URLs de C2, y bloquearlo castigaría al que analiza bien.
 - 🔒 **La API sólo se alcanza a través de CloudFront.** La URL de la función
   usa `AWS_IAM` y CloudFront firma cada pedido (OAC): la URL directa da 403.
   Sin esto, cualquiera podía hablarle a la API salteándose CloudFront.
@@ -681,7 +688,9 @@ haber relajado la defensa contra CSRF.
   infraestructura.
 - 🏷️ **Tags de ECR inmutables:** nadie reemplaza en silencio lo que corre.
 - 🧱 **Bucket privado por las cuatro vías:** sólo lo lee ESTA distribución.
-- 🛡️ **Cabeceras de seguridad** (CSP, HSTS de 2 años, `DENY`) desde CloudFront.
+- 🛡️ **Cabeceras de seguridad** (CSP, HSTS de 2 años, `DENY`) con una
+  CloudFront Function: el plan Free no admite políticas de cabeceras propias.
+- 🔭 **X-Ray** en la Lambda: separa el arranque en frío del tiempo de cada pedido.
 - 💸 **Techo de gasto natural:** la cuenta admite 10 ejecuciones concurrentes
   de Lambda; logs con retención de 14 días (por defecto, CloudWatch guarda
   para siempre).

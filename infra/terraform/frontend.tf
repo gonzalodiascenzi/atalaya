@@ -3,7 +3,13 @@
 # Sin versionado (trivy AWS-0090): todo lo que hay en el bucket se regenera
 # desde git en cada despliegue. Versionarlo sería pagar por guardar copias de
 # lo que ya está en el historial del repo.
+#
+# Sin logs de acceso de S3 (trivy AWS-0089): al bucket sólo lo lee CloudFront.
+# Esos logs registrarían las lecturas de CloudFront cuando no tiene la página
+# en caché, no las de los jugadores. Los cambios de permisos del bucket ya
+# quedan en CloudTrail.
 #trivy:ignore:AWS-0090
+#trivy:ignore:AWS-0089
 resource "aws_s3_bucket" "consola" {
   # El nombre de un bucket es global en todo AWS: se le suma la cuenta para
   # no chocar con el de nadie.
