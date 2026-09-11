@@ -5,7 +5,9 @@ Todo valor sensible entra por variables de entorno (12-factor). Nada de
 constantes hardcodeadas: si mañana esto corre en ECS, el mismo binario sirve.
 """
 
+import ssl
 from functools import lru_cache
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -135,13 +137,61 @@ class Settings(BaseSettings):
                 "  · local  -> make db-up\n"
                 "  · nube   -> cargá el DSN en el secreto atalaya-database-url"
             )
-        if dsn.startswith("postgresql+asyncpg://"):
-            return dsn
-        if dsn.startswith("postgresql://"):
-            return dsn.replace("postgresql://", "postgresql+asyncpg://", 1)
-        if dsn.startswith("postgres://"):
-            return dsn.replace("postgres://", "postgresql+asyncpg://", 1)
-        return dsn
+        for prefijo in ("postgresql://", "postgres://"):
+            if dsn.startswith(prefijo):
+                dsn = "postgresql+asyncpg://" + dsn[len(prefijo) :]
+                break
+        return split_tls(dsn)[0]
+
+    @property
+    def database_connect_args(self) -> dict:
+        """Argumentos TLS para el driver. Ver `split_tls`."""
+        return split_tls(self.database_url.strip())[1]
+
+
+def split_tls(dsn: str) -> tuple[str, dict]:
+    """Separa los parámetros TLS de libpq de la URL y los traduce para asyncpg.
+
+    Neon, Supabase y Cloud SQL entregan la cadena en dialecto libpq:
+    `?sslmode=require&channel_binding=require`. asyncpg no acepta ninguno de
+    los dos en la URL y revienta con `TypeError: connect() got an unexpected
+    keyword argument 'sslmode'` — en producción, en la primera consulta.
+
+    Devuelve (URL sin esos parámetros, connect_args para el motor).
+
+    Por qué la verificación va como SSLContext y no como texto en la URL:
+    `ssl=verify-full` escrito como cadena sigue la semántica de libpq y busca
+    un certificado raíz en ~/.postgresql/root.crt, que en Lambda o en un
+    contenedor no existe: la API no conectaría nunca. Un SSLContext de
+    `ssl.create_default_context()` verifica cadena y nombre de host contra el
+    almacén de certificados del sistema. Las dos cosas fueron verificadas
+    contra un endpoint real de Neon.
+
+    Reglas:
+      · channel_binding presente → se quita (asyncpg no lo implementa) y se
+        compensa verificando el certificado: era la protección contra un
+        intermediario, y no se pierde en silencio.
+      · verify-full / verify-ca  → SSLContext (verify-ca sin chequeo de host).
+      · require / prefer / ...   → se pasa tal cual: misma semántica que libpq.
+    """
+    partes = urlsplit(dsn)
+    params = dict(parse_qsl(partes.query, keep_blank_values=True))
+    if "sslmode" not in params and "channel_binding" not in params:
+        # Nada que traducir: la cadena vuelve intacta. Reconstruirla igual
+        # re-codificaría valores como `host=/tmp/pg` → `host=%2Ftmp%2Fpg`.
+        return dsn, {}
+    modo = params.pop("sslmode", None)
+    canal = params.pop("channel_binding", None)
+    url = urlunsplit(partes._replace(query=urlencode(params, safe="/")))
+
+    if canal in {"require", "prefer"} or modo in {"verify-full", "verify-ca"}:
+        contexto = ssl.create_default_context()
+        if modo == "verify-ca":
+            contexto.check_hostname = False
+        return url, {"ssl": contexto}
+    if modo:
+        return url, {"ssl": modo}
+    return url, {}
 
 
 @lru_cache(maxsize=1)

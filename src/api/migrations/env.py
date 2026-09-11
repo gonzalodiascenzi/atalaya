@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 # los resuelve uvicorn dentro del contenedor.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from config import get_settings  # noqa: E402
+from config import get_settings, split_tls  # noqa: E402
 from models import Base  # noqa: E402
 
 config = context.config
@@ -33,12 +33,21 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
-def _database_url() -> str:
-    """DSN asíncrono. Permite override por entorno para CI y tests."""
+def _database() -> tuple[str, dict]:
+    """(DSN asíncrono, argumentos TLS). Override por entorno para CI y tests.
+
+    Las migraciones pasan por la misma traducción que la API: si no, la API
+    conectaría a Neon y el job de migración reventaría con el mismo TypeError.
+    """
     override = os.getenv("ALEMBIC_DATABASE_URL")
     if override:
-        return override
-    return get_settings().async_database_url
+        return split_tls(override)
+    s = get_settings()
+    return s.async_database_url, s.database_connect_args
+
+
+def _database_url() -> str:
+    return _database()[0]
 
 
 def run_migrations_offline() -> None:
@@ -68,10 +77,12 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_async_migrations() -> None:
+    url, connect_args = _database()
     connectable = async_engine_from_config(
-        {"sqlalchemy.url": _database_url()},
+        {"sqlalchemy.url": url},
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=connect_args,
     )
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)

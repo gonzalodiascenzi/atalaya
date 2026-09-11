@@ -1,0 +1,105 @@
+# ══════════════════════════════════════════════════════════════════════════
+#  ATALAYA // Imagen de la API → registro en la nube
+#  ------------------------------------------------------------------------
+#  Construye la imagen en GitHub (no hace falta Docker local), la escanea y
+#  recién si está limpia la publica en GHCR.
+#
+#  Sin secretos: se autentica con el GITHUB_TOKEN efímero de la corrida.
+#  Para AWS Lambda, que sólo toma imágenes de ECR, se suma un paso que
+#  asume un rol IAM por OIDC — tampoco guarda claves en GitHub.
+# ══════════════════════════════════════════════════════════════════════════
+
+name: Imagen
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/api/**"
+      - ".github/workflows/imagen.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: imagen-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGEN: ghcr.io/${{ github.repository_owner }}/atalaya-api
+
+jobs:
+  construir:
+    name: 🐳 Construir, escanear y publicar
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write       # publicar en GHCR
+      id-token: write       # attestations de procedencia
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Etiquetas
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGEN }}
+          tags: |
+            type=sha,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # Primero se construye SIN publicar, para escanear lo que se va a
+      # subir. Publicar y después escanear es escanear lo que ya salió.
+      - name: Construir (sin publicar)
+        uses: docker/build-push-action@v6
+        with:
+          context: src/api
+          load: true
+          tags: atalaya-api:escaneo
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Escanear la imagen · CRITICAL corta
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: atalaya-api:escaneo
+          scanners: vuln,secret
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Iniciar sesión en GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Publica con SBOM y procedencia: quien descargue la imagen puede
+      # verificar de qué commit salió y qué trae adentro.
+      - name: Publicar
+        id: publicar
+        uses: docker/build-push-action@v6
+        with:
+          context: src/api
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          sbom: true
+          provenance: mode=max
+
+      - name: Resumen
+        run: |
+          {
+            echo "## 🐳 Imagen publicada"
+            echo ""
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+            echo "digest: \`${{ steps.publicar.outputs.digest }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
