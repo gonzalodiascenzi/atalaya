@@ -1,0 +1,6 @@
+# Rutas que el escaneo del ÁRBOL DE TRABAJO no recorre.
+# .git se revisa aparte, con el modo `git` de TruffleHog, que entiende el
+# historial de verdad en vez de leer objetos comprimidos como archivos.
+(^|/)\.git/
+(^|/)node_modules/
+(^|/)\.next/

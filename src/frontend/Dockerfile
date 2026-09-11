@@ -40,10 +40,12 @@ COPY --from=builder --chown=atalaya:atalaya /app/.next/standalone ./
 COPY --from=builder --chown=atalaya:atalaya /app/.next/static ./.next/static
 COPY --from=builder --chown=atalaya:atalaya /app/public ./public
 
-USER atalaya
+# UID numérico: runAsNonRoot de Kubernetes no puede verificar un nombre.
+USER 10002:10002
 EXPOSE 3000
 
+# Forma JSON: wget ya sale con error si la respuesta no es 2xx.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD wget -qO- http://localhost:3000/ >/dev/null 2>&1 || exit 1
+    CMD ["wget", "-q", "--spider", "http://localhost:3000/"]
 
 CMD ["node", "server.js"]

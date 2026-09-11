@@ -1,6 +1,11 @@
 """
 ATALAYA // Traducción de la cadena de conexión.
 
+Las cadenas de prueba NO llevan usuario ni contraseña: lo que se prueba son
+los parámetros, y una URI de Postgres con usuario y contraseña embebidos es
+justo lo que TruffleHog detecta — hasta intenta conectarse para verificarla.
+(Tampoco se escribe un ejemplo literal acá: el comentario mismo lo dispararía.)
+
 Neon entrega `?sslmode=require&channel_binding=require` y asyncpg no acepta
 ninguno de los dos: la API reventaba en producción con un TypeError en la
 primera consulta. Estos tests fijan la traducción — sin red.
@@ -13,7 +18,7 @@ import pytest
 from config import split_tls
 
 NEON = (
-    "postgresql+asyncpg://u:p@ep-x.us-east-2.aws.neon.tech/neondb"
+    "postgresql+asyncpg://ep-x.us-east-2.aws.neon.tech/neondb"
     "?sslmode=require&channel_binding=require"
 )
 
@@ -43,13 +48,13 @@ def test_verificar_no_se_escribe_como_texto():
     En Lambda ese archivo no existe y la API no conectaría nunca. Tiene que
     ser un SSLContext, que usa los certificados del sistema.
     """
-    _, args = split_tls("postgresql+asyncpg://u:p@h/db?sslmode=verify-full")
+    _, args = split_tls("postgresql+asyncpg://h/db?sslmode=verify-full")
     assert not isinstance(args["ssl"], str)
 
 
 def test_verify_ca_no_chequea_el_nombre_de_host():
     """Misma semántica que libpq: verify-ca valida la cadena, no el host."""
-    _, args = split_tls("postgresql+asyncpg://u:p@h/db?sslmode=verify-ca")
+    _, args = split_tls("postgresql+asyncpg://h/db?sslmode=verify-ca")
     assert args["ssl"].verify_mode is ssl.CERT_REQUIRED
     assert args["ssl"].check_hostname is False
 
@@ -57,7 +62,7 @@ def test_verify_ca_no_chequea_el_nombre_de_host():
 @pytest.mark.parametrize("modo", ["require", "prefer", "disable"])
 def test_los_demas_modos_se_pasan_tal_cual(modo):
     """Sin channel binding no hay nada que compensar: se respeta lo pedido."""
-    _, args = split_tls(f"postgresql+asyncpg://u:p@h/db?sslmode={modo}")
+    _, args = split_tls(f"postgresql+asyncpg://h/db?sslmode={modo}")
     assert args == {"ssl": modo}
 
 
@@ -68,7 +73,7 @@ def test_sin_parametros_no_toca_nada():
 
 def test_los_otros_parametros_sobreviven():
     url, _ = split_tls(
-        "postgresql+asyncpg://u:p@h/db?sslmode=require&application_name=atalaya"
+        "postgresql+asyncpg://h/db?sslmode=require&application_name=atalaya"
     )
     assert "application_name=atalaya" in url
 
@@ -79,7 +84,7 @@ def test_el_esquema_postgresql_se_normaliza(monkeypatch):
 
     monkeypatch.setenv(
         "DATABASE_URL",
-        "postgresql://u:p@ep-x.neon.tech/neondb?sslmode=require&channel_binding=require",
+        "postgresql://ep-x.neon.tech/neondb?sslmode=require&channel_binding=require",
     )
     s = Settings()
     assert s.async_database_url.startswith("postgresql+asyncpg://")

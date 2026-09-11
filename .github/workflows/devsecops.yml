@@ -55,16 +55,31 @@ jobs:
         with:
           fetch-depth: 0
 
-      # TruffleHog en modo filesystem: funciona igual en el primer commit,
-      # en un PR o en el cron, sin depender de que exista una rama base.
-      # `--results=verified,unknown` reporta lo confirmado y lo dudoso;
-      # sólo lo verificado rompe el build por defecto.
-      - name: TruffleHog
+      # ── Árbol de trabajo: estricto ──────────────────────────────────
+      # Falla también con lo NO verificado: en el código actual no tiene que
+      # haber nada con forma de credencial, sea real o no.
+      - name: TruffleHog · árbol de trabajo
         run: |
           docker run --rm -v "${PWD}:/repo" \
             trufflesecurity/trufflehog:latest \
             filesystem /repo \
+            --exclude-paths /repo/.github/trufflehog-exclude.txt \
             --results=verified,unknown \
+            --fail \
+            --no-update
+
+      # ── Historial completo: sólo lo que todavía funciona ────────────
+      # Un repo público expone TODO su historial, así que se revisa entero.
+      # Pero acá sólo corta lo VERIFICADO: una credencial que TruffleHog pudo
+      # usar de verdad. Una falsa de un test, o una real ya rotada, no es un
+      # riesgo — y reescribir la historia pública por eso sería peor que el
+      # problema. Una credencial viva en el historial, en cambio, se rota ya.
+      - name: TruffleHog · historial de git
+        run: |
+          docker run --rm -v "${PWD}:/repo" \
+            trufflesecurity/trufflehog:latest \
+            git file:///repo \
+            --results=verified \
             --fail \
             --no-update
 
