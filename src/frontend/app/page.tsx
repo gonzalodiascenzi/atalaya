@@ -98,6 +98,8 @@ export default function ConsolePage() {
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const loadingRef = useRef(false);
+  const missionsRef = useRef<Mission[]>([]);
+  const [onlyAvailable, setOnlyAvailable] = useState(false);
 
   const flash = useCallback((text: string, tone: Tono = 'ok') => {
     setToast({ text, tone });
@@ -137,6 +139,30 @@ export default function ConsolePage() {
     },
     [cursor, filter],
   );
+
+  useEffect(() => {
+    missionsRef.current = missions;
+  }, [missions]);
+
+  /* ── Actualización periódica: la torre no se queda vieja ───────── */
+  const refreshFeed = useCallback(async () => {
+    if (loadingRef.current) return;
+    try {
+      const limit = Math.min(100, Math.max(missionsRef.current.length, PAGE_SIZE));
+      const page = await fetchFeed({
+        cursor: null,
+        limit,
+        severity: filter === 'all' ? null : filter,
+      });
+      setOnline(true);
+      setCursor(page.next_cursor);
+      setHasMore(page.has_more);
+      setTotal(page.total);
+      setMissions(page.missions);
+    } catch {
+      // Silenciosa: sin servidor, se queda con lo que ya había en pantalla.
+    }
+  }, [filter]);
 
   /* ── Sesión ────────────────────────────────────────────────────── */
   const refrescarAnalista = useCallback(async (callsign: string) => {
@@ -191,6 +217,13 @@ export default function ConsolePage() {
     void loadPage(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter, acceso]);
+
+  /* ── Refresco automático cada 5 minutos ────────────────────────── */
+  useEffect(() => {
+    if (acceso === 'verificando' || acceso === 'sin-sesion') return;
+    const id = setInterval(() => void refreshFeed(), 5 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [acceso, refreshFeed]);
 
   /* ── Scroll infinito, que ahora sí termina ─────────────────────── */
   useEffect(() => {
@@ -250,6 +283,8 @@ export default function ConsolePage() {
   const criticas = missions.filter((m) => m.severity === 'critical').length;
   const fuentes = Array.from(new Set(missions.map((m) => m.source))).slice(0, 6);
   const pendientes = missions.filter((m) => !m.my_verdict && !m.locked).length;
+  const bloqueadas = missions.filter((m) => m.locked).length;
+  const visibleMissions = onlyAvailable ? missions.filter((m) => !m.locked) : missions;
 
   if (acceso === 'verificando') {
     return (
@@ -311,7 +346,11 @@ export default function ConsolePage() {
                 <span className="text-neon-green">▸</span> feed de misiones
               </span>
               <span className="text-phosphor-faint">
-                {online ? `${total} en la torre · ${pendientes} sin operar` : 'catálogo local'}
+                {online
+                  ? `${total} en la torre · ${pendientes} sin operar${
+                      onlyAvailable && bloqueadas > 0 ? ` · ${bloqueadas} ocultas por rango` : ''
+                    }`
+                  : 'catálogo local'}
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-2 p-3">
@@ -330,20 +369,36 @@ export default function ConsolePage() {
                   {s.label}
                 </button>
               ))}
+              <span className="mx-1 h-4 w-px bg-void-600" aria-hidden />
+              <button
+                type="button"
+                onClick={() => setOnlyAvailable((v) => !v)}
+                className={`btn-console border-neon-cyan/60 text-neon-cyan ${
+                  onlyAvailable ? 'bg-void-700 shadow-glow-cyan' : 'hover:bg-void-800'
+                }`}
+              >
+                solo mi rango{bloqueadas > 0 ? ` (${bloqueadas} ocultas)` : ''}
+              </button>
             </div>
           </div>
 
           <div className="space-y-3">
-            {missions.map((m, i) => (
-              <MissionCard
-                key={m.mission_id}
-                mission={m}
-                index={i}
-                canOperate={puedeOperar}
-                onVerdict={alEmitirVeredicto}
-                onSessionExpired={sesionVencida}
-              />
-            ))}
+            {visibleMissions.length === 0 ? (
+              <div className="panel clip-corner p-6 text-center text-2xs uppercase tracking-[0.16em] text-phosphor-faint">
+                ▪ ninguna misión operable a tu rango todavía · subí de nivel o desactivá el filtro ▪
+              </div>
+            ) : (
+              visibleMissions.map((m, i) => (
+                <MissionCard
+                  key={m.mission_id}
+                  mission={m}
+                  index={i}
+                  canOperate={puedeOperar}
+                  onVerdict={alEmitirVeredicto}
+                  onSessionExpired={sesionVencida}
+                />
+              ))
+            )}
           </div>
 
           <div ref={sentinelRef} className="py-8 text-center">
