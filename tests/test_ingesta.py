@@ -203,7 +203,10 @@ def test_cisa_kev_usa_la_copia_local_ante_un_304(tmp_path):
 def test_threatfox_normaliza_el_export_publico():
     """El export trae los mismos datos que la API, sin credencial."""
     c = ThreatFoxConnector(client=cliente_falso({}))
-    indicadores = c.parse(cargar("threatfox_export.json"), limit=10)
+    # Reloj fijo: el fixture es de septiembre de 2026 y el filtro de recencia
+    # es de 7 días; sin esto el test caduca solo.
+    ahora = datetime(2026, 9, 11, tzinfo=timezone.utc)
+    indicadores = c.parse(cargar("threatfox_export.json"), limit=10, ahora=ahora)
     por_valor = {i.value: i for i in indicadores}
 
     # El puerto no es parte del observable en STIX: dejarlo rompería el
