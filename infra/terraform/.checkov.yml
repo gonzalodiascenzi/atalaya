@@ -1,0 +1,64 @@
+# Calibración de Checkov para la infraestructura de ATALAYA.
+#
+# Cada check omitido tiene un motivo. La regla: se omite lo que es una decisión
+# consciente (costo, plan Free de CloudFront, arquitectura) y se arregla lo demás.
+# Mismo criterio que los `#trivy:ignore` que ya viven en los .tf. Revisar esta
+# lista cuando haya jugadores reales o se contrate el plan Pro de CloudFront.
+directory:
+  - .
+framework:
+  - terraform
+compact: true
+quiet: true
+skip-check:
+  # ── CloudFront ──────────────────────────────────────────────────────────
+  # TLS 1.2 mínimo y certificado propio exigen un dominio custom + ACM. Hoy se
+  # usa *.cloudfront.net con el certificado por defecto, que no permite fijar
+  # minimum_protocol_version. Se resuelve el día que haya dominio.
+  - CKV_AWS_174
+  - CKV2_AWS_42
+  # Logs de acceso: no incluidos en el plan Free (empiezan en Pro, USD 15/mes).
+  # Los logs de la Lambda registran cada pedido a la API y el WAF muestrea.
+  - CKV_AWS_86
+  # Restricción geográfica: la consola es para alumnos de cualquier país.
+  - CKV_AWS_374
+  # Failover de origen: un solo S3 + una Lambda; no hay segundo origen.
+  - CKV_AWS_310
+  # Cabeceras de seguridad: las pone una CloudFront Function con CSP propia
+  # (cdn.tf); las response headers policies administradas no traen CSP.
+  - CKV2_AWS_32
+  # Regla administrada para Log4j: la API es Python, no Java, y el plan Free
+  # admite 5 reglas, reservadas para los topes por IP.
+  - CKV2_AWS_47
+  # ── WAF ─────────────────────────────────────────────────────────────────
+  # Logging del WAF a CloudWatch/S3: costo por volumen; hoy alcanza con las
+  # métricas y las peticiones muestreadas. Activar con jugadores reales.
+  - CKV2_AWS_31
+  # ── S3 (consola estática, regenerable desde git) ────────────────────────
+  - CKV_AWS_21   # versioning: el contenido se reconstruye en cada deploy
+  - CKV_AWS_18   # access logging: sólo lo lee CloudFront; cambios en CloudTrail
+  - CKV_AWS_145  # KMS: el contenido es público por definición
+  - CKV_AWS_144  # replicación cross-region: no hay requisito de DR
+  - CKV2_AWS_61  # lifecycle: no se acumulan objetos
+  - CKV2_AWS_62  # event notifications: nadie consume eventos del bucket
+  # ── Lambda ──────────────────────────────────────────────────────────────
+  # DLQ: sólo aplica a invocaciones asíncronas; la API se invoca de forma
+  # síncrona vía Function URL detrás de CloudFront.
+  - CKV_AWS_116
+  # VPC: no hay recursos privados a los que llegar (la base es externa).
+  - CKV_AWS_117
+  # Concurrencia reservada: se recomienda fijarla (tope de costo ante una
+  # inundación), pero en cuentas nuevas el límite de 10 impide reservar.
+  # Pendiente: subir el límite de cuenta y fijar reserved_concurrent_executions.
+  - CKV_AWS_115
+  # Code signing: proceso adicional sin amenaza que lo justifique hoy.
+  - CKV_AWS_272
+  # Variables de entorno con KMS propia: ya se cifran con la clave de AWS;
+  # los secretos reales se leen de SSM con la clave KMS de lambda_api.tf.
+  - CKV_AWS_173
+  # ── Logs y ECR ──────────────────────────────────────────────────────────
+  # Retención de 1 año: se eligió 14 días a propósito (variables.tf).
+  - CKV_AWS_338
+  # KMS para log group y ECR: AES256/clave de AWS alcanzan para este dato.
+  - CKV_AWS_158
+  - CKV_AWS_136

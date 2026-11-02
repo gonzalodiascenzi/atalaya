@@ -398,6 +398,17 @@ jobs:
       - name: Validate
         run: terraform validate -no-color
 
+      # Checkov: 100+ checks de postura sobre los .tf. Lo que se omite está en
+      # infra/terraform/.checkov.yml, cada uno con su motivo. Estricto: si
+      # aparece un hallazgo nuevo, se arregla o se documenta, no se ignora.
+      - name: Checkov
+        uses: bridgecrewio/checkov-action@c10e2438743528f9e4549758fad8b7a62052541d # v12
+        with:
+          directory: infra/terraform
+          config_file: infra/terraform/.checkov.yml
+          output_format: cli
+          soft_fail: false
+
   # ════════════════════════════════════════════════════════════════════
   trivy:
     name: 🛡️ Trivy · vulns, secretos y misconfigs
