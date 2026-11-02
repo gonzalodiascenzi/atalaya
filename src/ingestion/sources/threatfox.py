@@ -69,14 +69,20 @@ class ThreatFoxConnector(Connector):
             return []
         return self.parse(json.loads(cuerpo), limit)
 
-    def parse(self, datos: dict, limit: int) -> list[RawIndicator]:
-        """Normaliza el export. Separado de fetch() para poder probarlo."""
+    def parse(
+        self, datos: dict, limit: int, ahora: datetime | None = None
+    ) -> list[RawIndicator]:
+        """Normaliza el export. Separado de fetch() para poder probarlo.
+
+        `ahora` permite fijar el reloj en tests: el filtro de recencia depende
+        de la fecha actual y un fixture estático caduca solo.
+        """
         filas = (
             [f for grupo in datos.values() for f in grupo]
             if isinstance(datos, dict)
             else list(datos)
         )
-        umbral = datetime.now(timezone.utc) - timedelta(days=RECENCIA_DIAS)
+        umbral = (ahora or datetime.now(timezone.utc)) - timedelta(days=RECENCIA_DIAS)
 
         recientes = []
         for f in filas:
