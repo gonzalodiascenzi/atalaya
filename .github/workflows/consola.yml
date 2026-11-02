@@ -38,9 +38,11 @@ jobs:
       run:
         working-directory: src/frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
           cache: npm
@@ -57,7 +59,7 @@ jobs:
           NEXT_PUBLIC_API_URL: ""
 
       - name: Credenciales temporales (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_CUENTA }}:role/atalaya-prod-github-deploy
           aws-region: us-east-1
@@ -76,7 +78,9 @@ jobs:
             --exclude "_next/static/*" --cache-control "no-cache"
 
       - name: Invalidar la caché de CloudFront
+        env:
+          DISTRIBUCION_ID: ${{ vars.AWS_DISTRIBUCION_ID }}
         run: |
           aws cloudfront create-invalidation \
-            --distribution-id "${{ vars.AWS_DISTRIBUCION_ID }}" --paths "/*" \
+            --distribution-id "$DISTRIBUCION_ID" --paths "/*" \
             --query Invalidation.Id --output text
